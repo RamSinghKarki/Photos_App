@@ -16,7 +16,7 @@ Search, OCR, and more can be added without redesigning the schema.
 | 1 | **Scanner**         | ✅ Done         |
 | 2 | **Faces (InsightFace)** | ✅ Done     |
 | 3 | **Clustering**      | ✅ Done         |
-| 4 | Viewer (PySide6/Qt) | ⬜ Not started  |
+| 4 | **Viewer (PySide6/Qt)** | ✅ Done     |
 
 ## Tech stack
 
@@ -243,6 +243,47 @@ DELETE FROM persons;   -- the ON DELETE SET NULL FK clears faces.person_id too
 Re-running `cluster_faces` is a full re-cluster: it rebuilds `persons` from
 scratch each time, so it is safe to run repeatedly while tuning `--eps`.
 
+## Usage — Module 4: Viewer (desktop app)
+
+The native PySide6/Qt desktop UI. Generate thumbnails first so the gallery is
+fast (the gallery shows cached thumbnails, never originals):
+
+```bash
+python -m scripts.generate_thumbnails      # cache grid thumbnails
+python -m scripts.app                       # launch the desktop app
+```
+
+What works today:
+- **App shell** — top bar (logo, always-available search, Import Folder),
+  grouped sidebar, and a status bar with live library counts.
+- **Dashboard** — stat tiles (photos, faces, people, storage) and recent scans.
+- **Photos** — a virtualized thumbnail grid (only visible tiles render; memory
+  stays flat on large libraries). `+` / `-` zoom the tiles; double-click or
+  Enter opens the viewer.
+- **People** — reflowing person cards with circular cover faces; click a person
+  to see their photos.
+- **Photo viewer** — full-resolution image with a collapsible metadata panel
+  (camera, date, dimensions, GPS, …); `←`/`→` navigate, `I` toggles the panel,
+  `F11` full screen, `Esc` closes.
+- **Import Folder** (`Ctrl+O`) — runs the scan + thumbnailing on a background
+  thread, so the UI stays responsive; the gallery refreshes when it finishes.
+
+Keyboard: `Ctrl+O` import · `Ctrl+F` search · `Ctrl+Q` quit · `+`/`-` zoom grid
+· `F11` full screen · `←`/`→` prev/next in viewer · `Esc` close.
+
+Sidebar sections tied to not-yet-built backend modules (Timeline, Videos,
+Search, Objects, Similar, Albums, Favorites, Archive, Trash, Settings) show an
+honest "planned" page rather than faking functionality.
+
+### How to verify correctness
+
+```bash
+pytest -q     # includes headless (offscreen) Qt smoke tests
+```
+
+Face detection needs a GPU, but everything else — scan, thumbnails, clustering,
+and the whole UI — runs and is tested headlessly.
+
 ## Design notes / known limitations
 
 **Module 1 (Scanner)**
@@ -268,8 +309,15 @@ scratch each time, so it is safe to run repeatedly while tuning `--eps`.
   optimization the schema already supports.
 - DBSCAN groups by single-linkage density; very lookalike people can merge and
   very sparse faces stay ungrouped. Tune `--eps` / `--min-samples` per library.
-- `persons.display_name` exists for user-assigned names but naming is a UI
-  concern (Viewer module), not done here.
+
+**Module 4 (Viewer)**
+- The gallery loads all photo rows (ids + paths) at once and lazy-loads
+  thumbnails; true paged/infinite scrolling is a future refinement. Thumbnails
+  themselves are already fully virtualized.
+- Person renaming/merge, favorites, albums, trash, and semantic search are
+  shown as planned sections — their backend modules are not built yet.
+- Import runs scan + thumbnailing in the background; face detection and
+  clustering are still run from their CLIs (they need the GPU model).
 
 ## Performance notes
 

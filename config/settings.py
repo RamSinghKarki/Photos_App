@@ -121,6 +121,14 @@ class Settings:
         default_factory=lambda: _env_int("PHOTOSPHERE_CLUSTER_MIN_SAMPLES", 3)
     )
 
+    # --- Thumbnails / Viewer (Module 4) -------------------------------------
+    # Longest edge (px) of cached grid thumbnails. The gallery shows these, not
+    # originals, so browsing stays fast on large libraries.
+    thumbnail_size: int = field(default_factory=lambda: _env_int("PHOTOSPHERE_THUMBNAIL_SIZE", 320))
+    thumbnail_quality: int = field(
+        default_factory=lambda: _env_int("PHOTOSPHERE_THUMBNAIL_QUALITY", 85)
+    )
+
     image_extensions: frozenset[str] = field(
         default_factory=lambda: frozenset(
             {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tif", ".tiff", ".webp", ".heic", ".heif"}

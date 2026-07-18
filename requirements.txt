@@ -18,10 +18,12 @@ onnxruntime-gpu>=1.17     # local GPU backend for InsightFace.
 # Clustering (Module 3)
 scikit-learn>=1.3         # DBSCAN grouping of face embeddings (local)
 
+# Viewer (Module 4) — native desktop UI
+PySide6>=6.6              # Qt for Python; no browser/web stack
+
 # --- Added by later modules (kept here for reference, uncomment when needed) ---
 # fastapi>=0.110           # backend API (later module)
 # uvicorn>=0.29            # ASGI server for FastAPI
-# PySide6>=6.6             # native desktop UI (Viewer module)
 
 # --- Dev / test only ---
 # pytest>=8.0

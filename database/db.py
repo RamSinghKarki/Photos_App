@@ -340,6 +340,156 @@ def count_persons(cur: PgCursor) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Thumbnail helpers (Module 4)
+# ---------------------------------------------------------------------------
+def stream_photos_needing_thumbnail(
+    conn: PgConnection, regenerate: bool = False, limit: Optional[int] = None
+) -> Iterator[tuple[int, str]]:
+    """Yield (id, file_path) for photos that need a thumbnail, server-side.
+
+    When ``regenerate`` is False only photos with no ``thumbnail_path`` are
+    returned; when True, every photo is yielded.
+    """
+    where = "" if regenerate else "WHERE thumbnail_path IS NULL"
+    sql = f"SELECT id, file_path FROM photos {where} ORDER BY id"
+    params: tuple[Any, ...] = ()
+    if limit is not None:
+        sql += " LIMIT %s"
+        params = (limit,)
+    with conn.cursor(name="pending_thumbs") as cur:
+        cur.itersize = 1000
+        cur.execute(sql, params)
+        for row in cur:
+            yield int(row[0]), row[1]
+
+
+def set_thumbnail_path(cur: PgCursor, photo_id: int, thumbnail_path: str) -> None:
+    """Record the cached thumbnail path for a photo."""
+    cur.execute(
+        "UPDATE photos SET thumbnail_path = %s, updated_at = now() WHERE id = %s",
+        (thumbnail_path, photo_id),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Read helpers for the Viewer UI (read-only; the UI never writes SQL directly)
+# ---------------------------------------------------------------------------
+def library_stats(cur: PgCursor) -> dict[str, int]:
+    """Return headline counts for the dashboard and status bar."""
+    cur.execute(
+        """
+        SELECT
+            (SELECT count(*) FROM photos),
+            (SELECT count(*) FROM faces),
+            (SELECT count(*) FROM persons),
+            (SELECT coalesce(sum(file_size), 0) FROM photos)
+        """
+    )
+    photos, faces, persons, storage = cur.fetchone()
+    return {
+        "photos": int(photos),
+        "faces": int(faces),
+        "persons": int(persons),
+        "storage_bytes": int(storage),
+    }
+
+
+def list_photo_grid(
+    cur: PgCursor,
+    limit: int,
+    offset: int = 0,
+    person_id: Optional[int] = None,
+    search: Optional[str] = None,
+) -> list[tuple[int, str, Optional[str], Any]]:
+    """Return (id, file_path, thumbnail_path, taken_at) rows for the gallery.
+
+    Newest first (by capture time, then id). Optionally restricted to a person
+    (photos containing one of their faces) or filtered by a free-text term that
+    matches the file path or camera model.
+    """
+    clauses: list[str] = []
+    params: list[Any] = []
+    joins = ""
+
+    if person_id is not None:
+        joins = "JOIN faces f ON f.photo_id = p.id"
+        clauses.append("f.person_id = %s")
+        params.append(person_id)
+
+    if search:
+        clauses.append("(p.file_path ILIKE %s OR p.camera_model ILIKE %s)")
+        term = f"%{search}%"
+        params.extend([term, term])
+
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    distinct = "DISTINCT" if person_id is not None else ""
+    params.extend([limit, offset])
+
+    cur.execute(
+        f"""
+        SELECT {distinct} p.id, p.file_path, p.thumbnail_path, p.taken_at
+          FROM photos p {joins}
+          {where}
+         ORDER BY p.taken_at DESC NULLS LAST, p.id DESC
+         LIMIT %s OFFSET %s
+        """,
+        params,
+    )
+    return [(int(r[0]), r[1], r[2], r[3]) for r in cur.fetchall()]
+
+
+def get_photo_detail(cur: PgCursor, photo_id: int) -> Optional[dict[str, Any]]:
+    """Return a photo's full metadata for the viewer panel, or None."""
+    cur.execute(
+        """
+        SELECT id, file_path, thumbnail_path, file_size, width, height, format,
+               taken_at, camera_make, camera_model, orientation,
+               gps_latitude, gps_longitude, is_favorite
+          FROM photos WHERE id = %s
+        """,
+        (photo_id,),
+    )
+    row = cur.fetchone()
+    if row is None:
+        return None
+    keys = (
+        "id", "file_path", "thumbnail_path", "file_size", "width", "height",
+        "format", "taken_at", "camera_make", "camera_model", "orientation",
+        "gps_latitude", "gps_longitude", "is_favorite",
+    )
+    return dict(zip(keys, row))
+
+
+def list_persons_with_cover(cur: PgCursor) -> list[dict[str, Any]]:
+    """Return people ordered by size, each with its cover face crop path."""
+    cur.execute(
+        """
+        SELECT pr.id, pr.display_name, pr.face_count, f.crop_path
+          FROM persons pr
+          LEFT JOIN faces f ON f.id = pr.cover_face_id
+         ORDER BY pr.face_count DESC, pr.id
+        """
+    )
+    return [
+        {"id": int(r[0]), "display_name": r[1], "face_count": int(r[2]), "cover_path": r[3]}
+        for r in cur.fetchall()
+    ]
+
+
+def recent_scan_runs(cur: PgCursor, limit: int = 5) -> list[dict[str, Any]]:
+    """Return the most recent scan runs for the dashboard activity feed."""
+    cur.execute(
+        """
+        SELECT root_path, started_at, finished_at, processed, skipped, duplicates, errors
+          FROM scan_runs ORDER BY id DESC LIMIT %s
+        """,
+        (limit,),
+    )
+    keys = ("root_path", "started_at", "finished_at", "processed", "skipped", "duplicates", "errors")
+    return [dict(zip(keys, row)) for row in cur.fetchall()]
+
+
+# ---------------------------------------------------------------------------
 # Scan-run bookkeeping (drives the processing summary)
 # ---------------------------------------------------------------------------
 def start_scan_run(cur: PgCursor, root_path: str) -> int:
