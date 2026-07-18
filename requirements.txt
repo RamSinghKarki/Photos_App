@@ -1,0 +1,20 @@
+# PhotoSphere AI — runtime dependencies
+# All inference is local; no cloud/API packages are permitted here.
+
+# Database
+psycopg2-binary>=2.9        # PostgreSQL driver
+pgvector>=0.2               # pgvector adapters for psycopg2
+
+# Imaging / metadata
+Pillow>=10.0               # image decoding + EXIF metadata
+numpy>=1.24                # embedding math (normalization, etc.)
+
+# --- Added by later modules (kept here for reference, uncomment when needed) ---
+# insightface>=0.7         # face detection + embeddings (Module 2)
+# onnxruntime-gpu>=1.17    # local GPU inference backend for InsightFace
+# fastapi>=0.110           # backend API (later module)
+# uvicorn>=0.29            # ASGI server for FastAPI
+# PySide6>=6.6             # native desktop UI (Viewer module)
+
+# --- Dev / test only ---
+# pytest>=8.0
