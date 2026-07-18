@@ -11,7 +11,7 @@ detection) and on Linux/macOS.
 | Component   | Version            | Notes                                              |
 |-------------|--------------------|----------------------------------------------------|
 | Python      | 3.12               | `python --version`                                 |
-| PostgreSQL  | 16 (14+ works)     | with the **pgvector** extension                    |
+| PostgreSQL  | 14–18 (18 tested)  | with the **pgvector** extension                    |
 | GPU (opt.)  | NVIDIA + CUDA      | for fast face detection; CPU fallback works        |
 | Git         | any                | to clone the repo                                  |
 
@@ -22,13 +22,29 @@ detection) and on Linux/macOS.
 1. Install **PostgreSQL 16** from https://www.postgresql.org/download/windows/
    and remember the password you set for the `postgres` user.
 
-2. Install the **pgvector** extension:
-   - Easiest on Windows: grab a prebuilt `vector` build matching your
-     PostgreSQL version from the pgvector releases
-     (https://github.com/pgvector/pgvector/releases) and copy its files into
-     your PostgreSQL `lib\` and `share\extension\` folders, **or** build it with
-     MSVC per the pgvector README.
-   - On Linux: `sudo apt install postgresql-16-pgvector`.
+2. Install the **pgvector** extension. On Windows there is no installer, so
+   build it once with Visual Studio's `nmake` (needs the *Desktop development
+   with C++* workload from the Visual Studio Installer). Open a normal
+   **Command Prompt** (not PowerShell) and run:
+
+   ```bat
+   call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+
+   set "PGROOT=C:\Program Files\PostgreSQL\18"
+
+   cd %TEMP%
+   git clone https://github.com/pgvector/pgvector.git
+   cd pgvector
+   nmake /F Makefile.win
+   nmake /F Makefile.win install
+   ```
+
+   - Adjust the Visual Studio path/edition (e.g. `Community` → `BuildTools`) if
+     needed. The default `pgvector` branch supports PostgreSQL 18.
+   - `PGROOT` must point at your PostgreSQL 18 install folder.
+   - `nmake install` copies `vector.dll` into `%PGROOT%\lib` and the extension
+     SQL into `%PGROOT%\share\extension`.
+   - On Linux this is just `sudo apt install postgresql-18-pgvector`.
 
 3. Create the database (from a terminal / psql shell):
 
@@ -37,7 +53,12 @@ detection) and on Linux/macOS.
    ```
 
    The `vector` extension itself is enabled automatically by the app the first
-   time it applies the schema (`CREATE EXTENSION IF NOT EXISTS vector`).
+   time it applies the schema (`CREATE EXTENSION IF NOT EXISTS vector`). To
+   confirm the build worked, you can run once:
+
+   ```bash
+   psql -U postgres -d photosphere -c "CREATE EXTENSION IF NOT EXISTS vector;"
+   ```
 
 ---
 
