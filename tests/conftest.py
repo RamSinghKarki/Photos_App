@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
 import pytest
 from PIL import Image
+
+# Point every test at the dedicated test database *before* settings are first
+# read. Overridable from the environment so CI can choose its own database.
+os.environ.setdefault("PHOTOSPHERE_DB_NAME", "photosphere_test")
+os.environ.setdefault("PHOTOSPHERE_DB_HOST", "127.0.0.1")
 
 
 def _make_exif_image(path: Path) -> None:
@@ -46,3 +52,25 @@ def photo_tree(tmp_path: Path) -> Path:
     (root / "notes.txt").write_text("ignore me")
 
     return root
+
+
+@pytest.fixture
+def clean_db():
+    """Ensure a reachable, empty schema; skip the test if the DB is down.
+
+    Shared by every integration test so production data is never touched.
+    """
+    import psycopg2
+
+    from config.settings import get_settings
+    from database import db
+
+    get_settings.cache_clear()
+    try:
+        db.apply_schema()
+    except psycopg2.OperationalError as exc:
+        pytest.skip(f"PostgreSQL not reachable for integration test: {exc}")
+
+    with db.connection() as conn, conn.cursor() as cur:
+        cur.execute("TRUNCATE faces, photos, scan_runs RESTART IDENTITY CASCADE")
+    yield

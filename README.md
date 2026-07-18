@@ -14,7 +14,7 @@ Search, OCR, and more can be added without redesigning the schema.
 |---|---------------------|----------------|
 | — | Foundation (config, logging, database) | ✅ Done |
 | 1 | **Scanner**         | ✅ Done         |
-| 2 | Faces (InsightFace) | ⬜ Not started  |
+| 2 | **Faces (InsightFace)** | ✅ Done     |
 | 3 | Clustering          | ⬜ Not started  |
 | 4 | Viewer (PySide6/Qt) | ⬜ Not started  |
 
@@ -132,12 +132,86 @@ TRUNCATE faces, photos, scan_runs RESTART IDENTITY CASCADE;
 The `data/` and `logs/` directories hold only generated artifacts and can be
 deleted safely; they are recreated on the next run.
 
-## Design notes / known limitations (Module 1)
+## Usage — Module 2: Faces
 
+After scanning, detect faces and store their embeddings. Detection runs
+**locally** via InsightFace on the GPU (automatic CPU fallback):
+
+```bash
+python -m scripts.detect_faces                 # process newly scanned photos
+python -m scripts.detect_faces --limit 5000    # bounded batch
+python -m scripts.detect_faces --reprocess     # re-examine every photo
+```
+
+Face-related settings (all env-overridable): `PHOTOSPHERE_FACE_MODEL`
+(default `buffalo_l`), `PHOTOSPHERE_FACE_CTX_ID` (GPU id; `-1` forces CPU),
+`PHOTOSPHERE_FACE_DET_SIZE` (default `640`), `PHOTOSPHERE_FACE_MIN_SCORE`
+(default `0.50`).
+
+On first run InsightFace downloads its model pack (a one-time local download);
+after that it is fully offline.
+
+### Expected output
+
+```
+Photos processed: 2380
+Faces found:      5127
+No faces:         241
+Unreadable:       12
+Errors:           0
+```
+
+- **Photos processed** — images opened and run through the detector.
+- **Faces found** — face rows stored (a photo may contribute several).
+- **No faces** — processed images where the detector found nobody.
+- **Unreadable** — files that could not be opened (corrupt/missing); marked
+  processed so they are not retried every run (`--reprocess` forces a retry).
+- **Errors** — unexpected failures (e.g. database); should be `0`.
+
+Each face is stored with its bounding box, detector score, **raw** embedding
+(`vector(512)`), and a cached crop under `data/face_crops/`. Embeddings are
+stored exactly as the model produces them; normalization for similarity happens
+at query time via the cosine (`<=>`) index.
+
+### How to verify correctness
+
+```bash
+pytest -q          # includes stub-detector tests for the whole face pipeline
+```
+
+```sql
+SELECT count(*) FROM faces;
+SELECT photo_id, det_score FROM faces ORDER BY id LIMIT 5;
+-- faces most similar to a given face (cosine distance):
+SELECT id FROM faces ORDER BY embedding <=> (SELECT embedding FROM faces WHERE id = 1) LIMIT 5;
+```
+
+### How to undo face processing
+
+```sql
+TRUNCATE faces RESTART IDENTITY;
+UPDATE photos SET faces_processed = FALSE;
+```
+
+Then delete cached crops if desired: everything under `data/face_crops/` is
+regenerable and safe to remove.
+
+## Design notes / known limitations
+
+**Module 1 (Scanner)**
 - Duplicate detection is **exact** (byte-for-byte SHA-256). Near-duplicate and
   perceptual matching is a separate, later module.
 - Moved/renamed files are treated as new photos on the next scan (the old path
   simply stops being found); a reconciliation pass can be added later.
 - Only still images are scanned. Video support is a future module.
-- The face and clustering columns/tables already exist in the schema so Module
-  2 needs no migration; they are simply unused until then.
+- The face and clustering columns/tables already exist in the schema so later
+  modules need no migration; they are simply unused until built.
+
+**Module 2 (Faces)**
+- Each `faces` row already has a nullable `person_id`; grouping faces into
+  people is **Module 3 (Clustering)** and is not done here.
+- Unreadable images are marked processed to avoid infinite retries; use
+  `--reprocess` after fixing/replacing a file to re-examine it.
+- The detector is injected behind the `FaceDetector` interface, so the whole
+  pipeline is tested with a stub. The real InsightFace model requires its
+  one-time model download and is best exercised on the target GPU machine.

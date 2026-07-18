@@ -9,9 +9,13 @@ pgvector>=0.2               # pgvector adapters for psycopg2
 Pillow>=10.0               # image decoding + EXIF metadata
 numpy>=1.24                # embedding math (normalization, etc.)
 
+# Faces (Module 2) — all local inference
+insightface>=0.7          # face detection + 512-d embeddings
+onnxruntime-gpu>=1.17     # local GPU backend for InsightFace.
+                          #   On a CPU-only machine install `onnxruntime`
+                          #   instead (the detector falls back to CPU).
+
 # --- Added by later modules (kept here for reference, uncomment when needed) ---
-# insightface>=0.7         # face detection + embeddings (Module 2)
-# onnxruntime-gpu>=1.17    # local GPU inference backend for InsightFace
 # fastapi>=0.110           # backend API (later module)
 # uvicorn>=0.29            # ASGI server for FastAPI
 # PySide6>=6.6             # native desktop UI (Viewer module)

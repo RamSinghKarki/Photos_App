@@ -9,34 +9,10 @@ tests skip rather than fail, keeping the pure-unit suite runnable anywhere.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
-import psycopg2
-import pytest
-
-# Point the app at the test database *before* settings are first read, then
-# reset the settings cache so the override takes effect.
-os.environ.setdefault("PHOTOSPHERE_DB_NAME", "photosphere_test")
-os.environ.setdefault("PHOTOSPHERE_DB_HOST", "127.0.0.1")
-
-from config.settings import get_settings  # noqa: E402
-from database import db  # noqa: E402
-from scanner.scanner import scan_directory  # noqa: E402
-
-
-@pytest.fixture
-def clean_db():
-    """Ensure a reachable, empty schema; skip the test if the DB is down."""
-    get_settings.cache_clear()
-    try:
-        db.apply_schema()
-    except psycopg2.OperationalError as exc:
-        pytest.skip(f"PostgreSQL not reachable for integration test: {exc}")
-
-    with db.connection() as conn, conn.cursor() as cur:
-        cur.execute("TRUNCATE faces, photos, scan_runs RESTART IDENTITY CASCADE")
-    yield
+from database import db
+from scanner.scanner import scan_directory
 
 
 def test_scan_counts_and_dedup(clean_db, photo_tree: Path) -> None:

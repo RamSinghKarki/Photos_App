@@ -206,6 +206,46 @@ def mark_photo_faces_processed(cur: PgCursor, photo_id: int) -> None:
     )
 
 
+def iter_photos_pending_faces(
+    cur: PgCursor, limit: Optional[int] = None
+) -> list[tuple[int, str]]:
+    """Return (id, file_path) for photos not yet processed by the face module.
+
+    Ordered by id for stable, resumable batches. ``limit`` caps the batch size
+    so a huge library can be processed in bounded chunks.
+    """
+    sql = (
+        "SELECT id, file_path FROM photos "
+        "WHERE faces_processed = FALSE ORDER BY id"
+    )
+    params: tuple[Any, ...] = ()
+    if limit is not None:
+        sql += " LIMIT %s"
+        params = (limit,)
+    cur.execute(sql, params)
+    return [(int(row[0]), row[1]) for row in cur.fetchall()]
+
+
+def delete_faces_for_photo(cur: PgCursor, photo_id: int) -> None:
+    """Remove any existing faces for a photo (used when reprocessing)."""
+    cur.execute("DELETE FROM faces WHERE photo_id = %s", (photo_id,))
+
+
+def reset_faces_processed(cur: PgCursor) -> int:
+    """Mark every photo as needing face processing again; return row count.
+
+    Used by the ``--reprocess`` path so a re-run re-examines the whole library.
+    """
+    cur.execute("UPDATE photos SET faces_processed = FALSE WHERE faces_processed = TRUE")
+    return cur.rowcount
+
+
+def count_faces(cur: PgCursor) -> int:
+    """Return the total number of detected faces stored."""
+    cur.execute("SELECT count(*) FROM faces")
+    return int(cur.fetchone()[0])
+
+
 # ---------------------------------------------------------------------------
 # Scan-run bookkeeping (drives the processing summary)
 # ---------------------------------------------------------------------------

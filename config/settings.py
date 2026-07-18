@@ -96,6 +96,19 @@ class Settings:
     # model actually used in Module 2.
     embedding_dim: int = field(default_factory=lambda: _env_int("PHOTOSPHERE_EMBEDDING_DIM", 512))
 
+    # --- Face module (Module 2) ---------------------------------------------
+    # InsightFace model pack name. "buffalo_l" is the standard 512-d pack.
+    face_model_name: str = field(default_factory=lambda: _env_str("PHOTOSPHERE_FACE_MODEL", "buffalo_l"))
+    # ctx_id >= 0 selects that GPU device; -1 forces CPU. The detector still
+    # falls back to CPU automatically if the GPU providers are unavailable.
+    face_ctx_id: int = field(default_factory=lambda: _env_int("PHOTOSPHERE_FACE_CTX_ID", 0))
+    # Square detection size fed to the model; larger finds smaller faces.
+    face_det_size: int = field(default_factory=lambda: _env_int("PHOTOSPHERE_FACE_DET_SIZE", 640))
+    # Detections below this confidence are discarded.
+    face_min_score: float = field(
+        default_factory=lambda: float(_env_str("PHOTOSPHERE_FACE_MIN_SCORE", "0.50"))
+    )
+
     image_extensions: frozenset[str] = field(
         default_factory=lambda: frozenset(
             {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tif", ".tiff", ".webp", ".heic", ".heif"}
