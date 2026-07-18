@@ -109,6 +109,18 @@ class Settings:
         default_factory=lambda: float(_env_str("PHOTOSPHERE_FACE_MIN_SCORE", "0.50"))
     )
 
+    # --- Clustering module (Module 3) ---------------------------------------
+    # DBSCAN neighbourhood radius as a *cosine distance* (1 - cosine similarity)
+    # on unit-normalized embeddings. Smaller = stricter (fewer faces merged).
+    cluster_eps: float = field(
+        default_factory=lambda: float(_env_str("PHOTOSPHERE_CLUSTER_EPS", "0.35"))
+    )
+    # Minimum faces in a neighbourhood to form a person; others become noise
+    # (left ungrouped rather than forced into a wrong person).
+    cluster_min_samples: int = field(
+        default_factory=lambda: _env_int("PHOTOSPHERE_CLUSTER_MIN_SAMPLES", 3)
+    )
+
     image_extensions: frozenset[str] = field(
         default_factory=lambda: frozenset(
             {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tif", ".tiff", ".webp", ".heic", ".heif"}

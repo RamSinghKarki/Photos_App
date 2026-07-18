@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import datetime as _dt
 import hashlib
+import io
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from PIL import ExifTags, Image
 
@@ -33,6 +34,11 @@ _EXIF_IFD = 0x8769
 _GPS_IFD = 0x8825
 
 _HASH_CHUNK = 1 << 20  # 1 MiB — hash in chunks so large files never load fully.
+
+# Files up to this size are read once into memory and used for BOTH hashing and
+# decoding, halving disk I/O per new photo. Larger files fall back to streaming
+# so an unusually big file never blows up memory.
+_SINGLE_READ_MAX = 64 * 1024 * 1024  # 64 MiB
 
 
 def compute_file_hash(path: Path) -> str:
@@ -107,8 +113,18 @@ def extract_metadata(path: Path) -> PhotoMetadata:
         OSError: if the file cannot be read at all (caller treats as a skip).
     """
     stat = path.stat()
-    file_hash = compute_file_hash(path)
     mtime = _dt.datetime.fromtimestamp(stat.st_mtime)
+
+    # Read the file once for both hashing and decoding when it is small enough;
+    # otherwise stream the hash and let PIL open the path directly.
+    image_source: Union[Path, io.BytesIO]
+    if stat.st_size <= _SINGLE_READ_MAX:
+        data = path.read_bytes()
+        file_hash = hashlib.sha256(data).hexdigest()
+        image_source = io.BytesIO(data)
+    else:
+        file_hash = compute_file_hash(path)
+        image_source = path
 
     width = height = None
     image_format: Optional[str] = None
@@ -117,7 +133,7 @@ def extract_metadata(path: Path) -> PhotoMetadata:
     gps_lat = gps_lon = None
 
     try:
-        with Image.open(path) as img:
+        with Image.open(image_source) as img:
             width, height = img.size
             image_format = img.format
             exif = img.getexif()

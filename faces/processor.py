@@ -132,17 +132,21 @@ def process_faces(
 
     db.apply_schema()
 
-    with db.connection() as conn, conn.cursor() as cur:
+    # Two connections: one streams the (potentially huge) list of pending photos
+    # server-side, the other performs batched writes. Keeping them separate lets
+    # writes commit repeatedly without invalidating the streaming read cursor.
+    write_conn = db.open_connection()
+    read_conn = db.open_connection()
+    try:
+        cur = write_conn.cursor()
+
         if reprocess:
             reset = db.reset_faces_processed(cur)
-            conn.commit()
+            write_conn.commit()  # commit before streaming so the read sees it
             logger.info("Reprocess requested: %d photos re-queued for faces", reset)
 
-        pending = db.iter_photos_pending_faces(cur, limit=limit)
-        logger.info("%d photo(s) pending face processing", len(pending))
-
         committed = 0
-        for photo_id, file_path in pending:
+        for photo_id, file_path in db.stream_photos_pending_faces(read_conn, limit=limit):
             # A per-photo savepoint isolates failures: a bad image rolls back
             # only its own writes, never the rest of the uncommitted batch.
             cur.execute("SAVEPOINT photo_sp")
@@ -160,7 +164,7 @@ def process_faces(
 
                 committed += 1
                 if committed >= effective_batch:
-                    conn.commit()
+                    write_conn.commit()
                     committed = 0
                     logger.info("Committed batch; photos so far: %d", summary.photos)
 
@@ -181,7 +185,13 @@ def process_faces(
                 cur.execute("RELEASE SAVEPOINT photo_sp")
                 logger.error("Failed to process faces for %s: %s", file_path, exc)
 
-        conn.commit()
+        write_conn.commit()
+    except Exception:
+        write_conn.rollback()
+        raise
+    finally:
+        read_conn.close()
+        write_conn.close()
 
     logger.info("Face processing complete")
     return summary

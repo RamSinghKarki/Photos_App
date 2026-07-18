@@ -92,6 +92,33 @@ CREATE INDEX IF NOT EXISTS idx_faces_embedding
     ON faces USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 -- ---------------------------------------------------------------------------
+-- persons: a group of faces believed to be the same individual (Module 3).
+-- Added additively — the faces table already carries person_id, so introducing
+-- people needs no destructive change. display_name is user-assignable later.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS persons (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    display_name    TEXT,                          -- user-assigned name (later)
+    face_count      INTEGER     NOT NULL DEFAULT 0,
+    cover_face_id   BIGINT REFERENCES faces (id) ON DELETE SET NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Tie faces.person_id to persons.id. Guarded so the schema stays idempotent
+-- (PostgreSQL has no ADD CONSTRAINT IF NOT EXISTS).
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_faces_person'
+    ) THEN
+        ALTER TABLE faces
+            ADD CONSTRAINT fk_faces_person
+            FOREIGN KEY (person_id) REFERENCES persons (id) ON DELETE SET NULL;
+    END IF;
+END$$;
+
+-- ---------------------------------------------------------------------------
 -- scan_runs: an audit log of each scan, powering the processing summary.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS scan_runs (

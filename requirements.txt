@@ -15,6 +15,9 @@ onnxruntime-gpu>=1.17     # local GPU backend for InsightFace.
                           #   On a CPU-only machine install `onnxruntime`
                           #   instead (the detector falls back to CPU).
 
+# Clustering (Module 3)
+scikit-learn>=1.3         # DBSCAN grouping of face embeddings (local)
+
 # --- Added by later modules (kept here for reference, uncomment when needed) ---
 # fastapi>=0.110           # backend API (later module)
 # uvicorn>=0.29            # ASGI server for FastAPI

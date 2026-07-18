@@ -15,7 +15,7 @@ Search, OCR, and more can be added without redesigning the schema.
 | — | Foundation (config, logging, database) | ✅ Done |
 | 1 | **Scanner**         | ✅ Done         |
 | 2 | **Faces (InsightFace)** | ✅ Done     |
-| 3 | Clustering          | ⬜ Not started  |
+| 3 | **Clustering**      | ✅ Done         |
 | 4 | Viewer (PySide6/Qt) | ⬜ Not started  |
 
 ## Tech stack
@@ -196,6 +196,53 @@ UPDATE photos SET faces_processed = FALSE;
 Then delete cached crops if desired: everything under `data/face_crops/` is
 regenerable and safe to remove.
 
+## Usage — Module 3: Clustering
+
+Group detected faces into people. This reads every stored embedding, clusters
+them, and fills each face's `person_id` (creating `persons` rows):
+
+```bash
+python -m scripts.cluster_faces
+python -m scripts.cluster_faces --eps 0.30 --min-samples 4
+```
+
+Clustering uses DBSCAN over **cosine distance** on unit-normalized embeddings.
+Tuning (env-overridable): `PHOTOSPHERE_CLUSTER_EPS` (default `0.35`; lower =
+stricter grouping) and `PHOTOSPHERE_CLUSTER_MIN_SAMPLES` (default `3`; higher =
+more evidence required before forming a person). Faces DBSCAN judges ambiguous
+are left **ungrouped** (`person_id = NULL`) instead of being misfiled.
+
+### Expected output
+
+```
+Faces:      5127
+People:     214
+Grouped:    4903
+Ungrouped:  224
+```
+
+### How to verify correctness
+
+```bash
+pytest -q
+```
+
+```sql
+SELECT count(*) FROM persons;
+SELECT p.id, p.face_count, p.cover_face_id
+  FROM persons p ORDER BY p.face_count DESC LIMIT 10;   -- biggest people
+SELECT count(*) FROM faces WHERE person_id IS NULL;      -- ungrouped faces
+```
+
+### How to undo clustering
+
+```sql
+DELETE FROM persons;   -- the ON DELETE SET NULL FK clears faces.person_id too
+```
+
+Re-running `cluster_faces` is a full re-cluster: it rebuilds `persons` from
+scratch each time, so it is safe to run repeatedly while tuning `--eps`.
+
 ## Design notes / known limitations
 
 **Module 1 (Scanner)**
@@ -208,10 +255,30 @@ regenerable and safe to remove.
   modules need no migration; they are simply unused until built.
 
 **Module 2 (Faces)**
-- Each `faces` row already has a nullable `person_id`; grouping faces into
-  people is **Module 3 (Clustering)** and is not done here.
 - Unreadable images are marked processed to avoid infinite retries; use
   `--reprocess` after fixing/replacing a file to re-examine it.
 - The detector is injected behind the `FaceDetector` interface, so the whole
   pipeline is tested with a stub. The real InsightFace model requires its
   one-time model download and is best exercised on the target GPU machine.
+
+**Module 3 (Clustering)**
+- Clustering is a full **re-cluster** each run: simple and deterministic, but
+  it loads all embeddings into memory. Incremental assignment of only-new
+  faces to their nearest existing person (using the pgvector index) is a future
+  optimization the schema already supports.
+- DBSCAN groups by single-linkage density; very lookalike people can merge and
+  very sparse faces stay ungrouped. Tune `--eps` / `--min-samples` per library.
+- `persons.display_name` exists for user-assigned names but naming is a UI
+  concern (Viewer module), not done here.
+
+## Performance notes
+
+Design choices that keep the pipeline scalable to 100k–500k photos:
+- **Scanner** streams the filesystem with a generator (flat memory) and, for
+  typical-sized images, reads each new file **once** for both hashing and
+  decoding instead of twice.
+- **Faces** stream pending photos through a server-side cursor (memory stays
+  flat regardless of library size) and commit in configurable batches, with a
+  per-photo savepoint so one bad file never rolls back a whole batch.
+- All frequently-queried columns are indexed, and face similarity uses the
+  pgvector cosine index.

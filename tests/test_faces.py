@@ -122,6 +122,20 @@ def test_reprocess_replaces_not_appends(clean_db, photo_tree: Path) -> None:
         assert db.count_faces(cur) == READABLE * 2
 
 
+def test_streaming_survives_frequent_commits(clean_db, photo_tree: Path) -> None:
+    # batch_size=1 commits the write connection after every photo *while* the
+    # read connection is still streaming pending photos. This guards the
+    # two-connection design against a regression to a single connection (where
+    # committing would invalidate the server-side read cursor).
+    _scan(photo_tree)
+    summary = process_faces(StubDetector(1), batch_size=1)
+
+    assert summary.photos == READABLE
+    assert summary.faces == READABLE
+    with db.connection() as conn, conn.cursor() as cur:
+        assert db.count_faces(cur) == READABLE
+
+
 def test_one_bad_photo_does_not_abort_batch(clean_db, photo_tree: Path) -> None:
     _scan(photo_tree)
     # Delete one *real* image after scanning so its row points at a missing file.

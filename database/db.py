@@ -206,24 +206,52 @@ def mark_photo_faces_processed(cur: PgCursor, photo_id: int) -> None:
     )
 
 
+def _pending_faces_sql(limit: Optional[int]) -> tuple[str, tuple[Any, ...]]:
+    """Build the SELECT for photos awaiting face processing."""
+    sql = "SELECT id, file_path FROM photos WHERE faces_processed = FALSE ORDER BY id"
+    if limit is not None:
+        return sql + " LIMIT %s", (limit,)
+    return sql, ()
+
+
 def iter_photos_pending_faces(
     cur: PgCursor, limit: Optional[int] = None
 ) -> list[tuple[int, str]]:
     """Return (id, file_path) for photos not yet processed by the face module.
 
-    Ordered by id for stable, resumable batches. ``limit`` caps the batch size
-    so a huge library can be processed in bounded chunks.
+    Materialises the full list — convenient for tests and small batches. For
+    large libraries prefer :func:`stream_photos_pending_faces`.
     """
-    sql = (
-        "SELECT id, file_path FROM photos "
-        "WHERE faces_processed = FALSE ORDER BY id"
-    )
-    params: tuple[Any, ...] = ()
-    if limit is not None:
-        sql += " LIMIT %s"
-        params = (limit,)
+    sql, params = _pending_faces_sql(limit)
     cur.execute(sql, params)
     return [(int(row[0]), row[1]) for row in cur.fetchall()]
+
+
+def stream_photos_pending_faces(
+    conn: PgConnection, limit: Optional[int] = None, itersize: int = 1000
+) -> Iterator[tuple[int, str]]:
+    """Yield (id, file_path) for pending photos via a server-side cursor.
+
+    The named cursor keeps the result set on the server and streams it in
+    ``itersize`` chunks, so memory stays flat even for a 500k-photo library.
+    The given connection must stay read-only for the life of the generator
+    (do writes/commits on a *separate* connection).
+    """
+    sql, params = _pending_faces_sql(limit)
+    with conn.cursor(name="pending_faces") as cur:
+        cur.itersize = itersize
+        cur.execute(sql, params)
+        for row in cur:
+            yield int(row[0]), row[1]
+
+
+def open_connection() -> PgConnection:
+    """Open a standalone connection; the caller manages commit/close.
+
+    Used when two connections are needed at once — e.g. streaming reads on one
+    while committing writes on another.
+    """
+    return _connect()
 
 
 def delete_faces_for_photo(cur: PgCursor, photo_id: int) -> None:
@@ -243,6 +271,71 @@ def reset_faces_processed(cur: PgCursor) -> int:
 def count_faces(cur: PgCursor) -> int:
     """Return the total number of detected faces stored."""
     cur.execute("SELECT count(*) FROM faces")
+    return int(cur.fetchone()[0])
+
+
+# ---------------------------------------------------------------------------
+# Person / clustering helpers (Module 3)
+# ---------------------------------------------------------------------------
+def fetch_face_vectors(cur: PgCursor) -> tuple[list[int], list[float], "np.ndarray"]:
+    """Return (face_ids, det_scores, embeddings) for every stored face.
+
+    ``embeddings`` is an (N, dim) float32 array. Because pgvector is registered
+    on the connection, the ``embedding`` column already arrives as a NumPy
+    array, so no per-row parsing is needed.
+    """
+    import numpy as np  # local import keeps db.py import-light
+
+    def _to_array(value: Any) -> "np.ndarray":
+        # pgvector may hand back its own Vector type, a list, or an ndarray
+        # depending on version; normalize them all to a float32 row.
+        if hasattr(value, "to_numpy"):
+            return value.to_numpy().astype(np.float32)
+        return np.asarray(value, dtype=np.float32)
+
+    cur.execute("SELECT id, det_score, embedding FROM faces ORDER BY id")
+    ids: list[int] = []
+    scores: list[float] = []
+    vectors: list[Any] = []
+    for face_id, det_score, embedding in cur.fetchall():
+        ids.append(int(face_id))
+        scores.append(float(det_score) if det_score is not None else 0.0)
+        vectors.append(_to_array(embedding))
+
+    matrix = np.vstack(vectors) if vectors else np.empty((0, 0), np.float32)
+    return ids, scores, matrix
+
+
+def clear_persons(cur: PgCursor) -> None:
+    """Remove every person row, detaching their faces.
+
+    DELETE (not TRUNCATE) is used because the faces->persons foreign key blocks
+    TRUNCATE; the FK's ON DELETE SET NULL clears each face's person_id as its
+    person is removed, giving a clean slate for a re-cluster.
+    """
+    cur.execute("DELETE FROM persons")
+
+
+def create_person(cur: PgCursor, face_count: int, cover_face_id: Optional[int]) -> int:
+    """Insert a person row and return its id."""
+    cur.execute(
+        "INSERT INTO persons (face_count, cover_face_id) VALUES (%s, %s) RETURNING id",
+        (face_count, cover_face_id),
+    )
+    return int(cur.fetchone()[0])
+
+
+def assign_faces_to_person(cur: PgCursor, person_id: int, face_ids: Sequence[int]) -> None:
+    """Point a batch of faces at one person in a single statement."""
+    cur.execute(
+        "UPDATE faces SET person_id = %s WHERE id = ANY(%s)",
+        (person_id, list(face_ids)),
+    )
+
+
+def count_persons(cur: PgCursor) -> int:
+    """Return the number of person groups."""
+    cur.execute("SELECT count(*) FROM persons")
     return int(cur.fetchone()[0])
 
 
