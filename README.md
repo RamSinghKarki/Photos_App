@@ -43,23 +43,27 @@ docs/         system prompt + module docs
 
 ## Setup
 
-1. **PostgreSQL** with the `pgvector` extension must be installed and running.
-   On Windows, install PostgreSQL 16 and the pgvector extension.
+See **[docs/INSTALL.md](docs/INSTALL.md)** for full, step-by-step instructions
+(Docker or native, Windows/Linux). Quick version:
 
-2. **Create the database** (one time):
+1. **Start PostgreSQL + pgvector.** Easiest is Docker (runs only the database):
 
    ```bash
-   createdb photosphere
+   docker compose up -d      # PostgreSQL 18 + pgvector on localhost:5432
    ```
 
-3. **Install Python dependencies** (Python 3.12):
+   This creates the `photosphere` database with the extension enabled and uses
+   the app's default credentials, so no further DB config is needed. (Prefer a
+   native install? See docs/INSTALL.md.)
+
+2. **Install Python dependencies** (Python 3.12):
 
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Configure connection** (optional — defaults shown). Override with
-   environment variables so credentials never live in the repo:
+3. **Configure connection** — only if you are *not* using the bundled Docker
+   defaults. Override via environment variables:
 
    ```
    PHOTOSPHERE_DB_HOST=localhost

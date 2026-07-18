@@ -17,21 +17,46 @@ detection) and on Linux/macOS.
 
 ---
 
-## 2. Install PostgreSQL + pgvector
+## 2. Start PostgreSQL + pgvector
 
-1. Install **PostgreSQL 16** from https://www.postgresql.org/download/windows/
-   and remember the password you set for the `postgres` user.
+You only run the **database** in a container (or natively); the desktop app and
+pipeline scripts run on your host and connect to it on `localhost:5432`.
 
-2. Install the **pgvector** extension. On Windows there is no installer, so
-   build it once with Visual Studio's `nmake` (needs the *Desktop development
-   with C++* workload from the Visual Studio Installer). Open a normal
-   **Command Prompt** (not PowerShell) and run:
+### Option A — Docker (recommended)
+
+Needs [Docker Desktop](https://www.docker.com/products/docker-desktop/). From
+the repo root:
+
+```bash
+docker compose up -d
+```
+
+That's it — this starts PostgreSQL 18 with pgvector already available, creates
+the `photosphere` database, and enables the `vector` extension. The bundled
+`docker-compose.yml` uses the same defaults the app expects
+(`postgres`/`postgres` on `localhost:5432`), so you can **skip step 5**
+(connection config) entirely.
+
+Handy commands:
+
+```bash
+docker compose ps        # check status / health
+docker compose logs -f   # follow database logs
+docker compose down      # stop (data is kept in a named volume)
+docker compose down -v   # stop AND delete all data
+```
+
+### Option B — Native PostgreSQL 18 on Windows
+
+1. Install **PostgreSQL 18** from https://www.postgresql.org/download/windows/
+   and remember the `postgres` password.
+
+2. Build **pgvector** once with Visual Studio's `nmake` (needs the *Desktop
+   development with C++* workload). In a **Command Prompt** (not PowerShell):
 
    ```bat
    call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
-
    set "PGROOT=C:\Program Files\PostgreSQL\18"
-
    cd %TEMP%
    git clone https://github.com/pgvector/pgvector.git
    cd pgvector
@@ -39,22 +64,18 @@ detection) and on Linux/macOS.
    nmake /F Makefile.win install
    ```
 
-   - Adjust the Visual Studio path/edition (e.g. `Community` → `BuildTools`) if
-     needed. The default `pgvector` branch supports PostgreSQL 18.
-   - `PGROOT` must point at your PostgreSQL 18 install folder.
-   - `nmake install` copies `vector.dll` into `%PGROOT%\lib` and the extension
-     SQL into `%PGROOT%\share\extension`.
-   - On Linux this is just `sudo apt install postgresql-18-pgvector`.
+   Adjust the Visual Studio path/edition as needed; the default `pgvector`
+   branch supports PostgreSQL 18. On Linux this is just
+   `sudo apt install postgresql-18-pgvector`.
 
-3. Create the database (from a terminal / psql shell):
+3. Create the database:
 
    ```bash
    createdb -U postgres photosphere
    ```
 
-   The `vector` extension itself is enabled automatically by the app the first
-   time it applies the schema (`CREATE EXTENSION IF NOT EXISTS vector`). To
-   confirm the build worked, you can run once:
+   The app enables the `vector` extension automatically on first launch; to
+   confirm the build worked you can run once:
 
    ```bash
    psql -U postgres -d photosphere -c "CREATE EXTENSION IF NOT EXISTS vector;"
