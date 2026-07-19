@@ -155,7 +155,8 @@ Grouped by area — this is the full public surface the rest of the app uses.
   `delete_faces_for_photo`, `reset_faces_processed`, `count_faces`,
   `count_photos_pending_faces`.
 - **Persons/clustering:** `fetch_face_vectors`, `clear_persons`, `create_person`,
-  `assign_faces_to_person`, `count_persons`, `list_persons_with_cover`.
+  `assign_faces_to_person`, `count_persons`, `list_persons_with_cover`,
+  `rename_person`, `delete_person`, `merge_persons`.
 - **Thumbnails:** `stream_photos_needing_thumbnail`, `set_thumbnail_path`,
   `count_photos_needing_thumbnail`.
 - **UI reads:** `library_stats`, `list_photo_grid`, `get_photo_detail`,

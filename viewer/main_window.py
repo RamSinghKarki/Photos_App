@@ -81,6 +81,8 @@ class MainWindow(QtWidgets.QMainWindow):
             lambda pid: self._open_viewer(self._person_detail.current_photo_ids(), pid)
         )
         self._person_detail.detect_faces_requested.connect(self._on_detect_selected)
+        self._person_detail.person_changed.connect(self.refresh_all)
+        self._person_detail.open_person_requested.connect(self._open_person)
         self._people.person_selected.connect(self._open_person)
         self._person_detail.back_requested.connect(lambda: self.show_page("people"))
 

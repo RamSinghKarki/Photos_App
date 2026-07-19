@@ -353,6 +353,49 @@ def count_persons(cur: PgCursor) -> int:
     return int(cur.fetchone()[0])
 
 
+def rename_person(cur: PgCursor, person_id: int, name: Optional[str]) -> None:
+    """Set (or clear, with None) a person's display name."""
+    clean = name.strip() if isinstance(name, str) and name.strip() else None
+    cur.execute(
+        "UPDATE persons SET display_name = %s, updated_at = now() WHERE id = %s",
+        (clean, person_id),
+    )
+
+
+def delete_person(cur: PgCursor, person_id: int) -> None:
+    """Remove a person group; its faces are un-grouped (person_id → NULL).
+
+    Faces and their embeddings are never deleted — only the grouping is removed,
+    thanks to the ON DELETE SET NULL foreign key.
+    """
+    cur.execute("DELETE FROM persons WHERE id = %s", (person_id,))
+
+
+def merge_persons(cur: PgCursor, source_id: int, target_id: int) -> None:
+    """Merge ``source_id`` into ``target_id``.
+
+    All of the source's faces are reassigned to the target, the target's
+    ``face_count`` is recomputed, and the (now empty) source person is removed.
+    A no-op if source == target.
+    """
+    if source_id == target_id:
+        return
+    cur.execute(
+        "UPDATE faces SET person_id = %s WHERE person_id = %s",
+        (target_id, source_id),
+    )
+    cur.execute("DELETE FROM persons WHERE id = %s", (source_id,))
+    cur.execute(
+        """
+        UPDATE persons
+           SET face_count = (SELECT count(*) FROM faces WHERE person_id = %s),
+               updated_at = now()
+         WHERE id = %s
+        """,
+        (target_id, target_id),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Thumbnail helpers (Module 4)
 # ---------------------------------------------------------------------------

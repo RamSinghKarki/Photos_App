@@ -169,11 +169,13 @@ class PeoplePage(QtWidgets.QWidget):
 
 
 class PersonDetailPage(QtWidgets.QWidget):
-    """Photos for one person, with a back button and name header."""
+    """Photos for one person, with a name header and rename/merge/delete."""
 
     back_requested = QtCore.Signal()
     photo_activated = QtCore.Signal(int)
     detect_faces_requested = QtCore.Signal(list)
+    person_changed = QtCore.Signal()          # people list needs refreshing
+    open_person_requested = QtCore.Signal(int)  # navigate to another person
 
     def __init__(self) -> None:
         super().__init__()
@@ -188,10 +190,21 @@ class PersonDetailPage(QtWidgets.QWidget):
         back.clicked.connect(self.back_requested.emit)
         self._name = QtWidgets.QLabel("Person")
         self._name.setObjectName("H1")
+
+        rename_btn = QtWidgets.QPushButton("Rename")
+        rename_btn.clicked.connect(self._on_rename)
+        merge_btn = QtWidgets.QPushButton("Merge…")
+        merge_btn.clicked.connect(self._on_merge)
+        delete_btn = QtWidgets.QPushButton("Delete")
+        delete_btn.clicked.connect(self._on_delete)
+
         header.addWidget(back)
         header.addSpacing(10)
         header.addWidget(self._name)
         header.addStretch(1)
+        header.addWidget(rename_btn)
+        header.addWidget(merge_btn)
+        header.addWidget(delete_btn)
         layout.addLayout(header)
 
         self._model = PhotoGridModel()
@@ -211,3 +224,50 @@ class PersonDetailPage(QtWidgets.QWidget):
                 limit=limit, offset=offset, person_id=person_id
             )
         )
+
+    # -- editing -------------------------------------------------------------
+    def _on_rename(self) -> None:
+        if self._person_id is None:
+            return
+        current = self._name.text() if self._name.text() != "Unknown" else ""
+        name, ok = QtWidgets.QInputDialog.getText(
+            self, "Rename person", "Name:", text=current
+        )
+        if ok:
+            data.rename_person(self._person_id, name)
+            self._name.setText(name.strip() or "Unknown")
+            self.person_changed.emit()
+
+    def _on_delete(self) -> None:
+        if self._person_id is None:
+            return
+        reply = QtWidgets.QMessageBox.question(
+            self, "Delete person",
+            "Remove this person group? The photos and faces are kept — only the "
+            "grouping is removed.",
+        )
+        if reply == QtWidgets.QMessageBox.StandardButton.Yes:
+            data.delete_person(self._person_id)
+            self.person_changed.emit()
+            self.back_requested.emit()
+
+    def _on_merge(self) -> None:
+        if self._person_id is None:
+            return
+        others = [p for p in data.persons() if p["id"] != self._person_id]
+        if not others:
+            QtWidgets.QMessageBox.information(self, "Merge", "No other people to merge into.")
+            return
+
+        labels = [
+            f"{p['display_name'] or 'Unknown'}  ({p['face_count']} photos)" for p in others
+        ]
+        choice, ok = QtWidgets.QInputDialog.getItem(
+            self, "Merge person", "Merge this person into:", labels, editable=False
+        )
+        if not ok:
+            return
+        target = others[labels.index(choice)]
+        data.merge_person_into(self._person_id, target["id"])
+        self.person_changed.emit()
+        self.open_person_requested.emit(target["id"])  # show the merged result

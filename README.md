@@ -290,7 +290,9 @@ What works today:
   time as you scroll) and **off-thread thumbnail decoding**, so it stays smooth
   on 100k+ libraries. `+` / `-` zoom; double-click or Enter opens the viewer.
 - **People** — reflowing person cards with circular cover faces; click to see
-  that person's photos.
+  that person's photos. On a person you can **Rename**, **Merge…** into another
+  person (their faces move over), or **Delete** the group (photos/faces are
+  kept — only the grouping is removed).
 - **Manual face detection** — select one or more photos in the grid
   (click, `Ctrl`/`Shift`-click, or `Ctrl+A`), **right-click → "Detect faces on
   N selected"**, and it runs detection on just those photos and regroups people.
