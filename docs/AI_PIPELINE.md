@@ -23,7 +23,8 @@ flowchart LR
 
 All stages run in the background pipeline (`viewer/tasks.PipelineWorker`) off the
 UI thread, are **incremental** (only new photos), **batched**, **cancel-safe**
-(committed batches persist), and report progress.
+(committed batches persist), and report progress. The stages are **plugins** run
+by a `PluginManager` — see [PLUGINS.md](PLUGINS.md) for how to add one.
 
 ---
 

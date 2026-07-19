@@ -59,6 +59,12 @@ never wiped, confidence-gated. Covers vision Levels 1, 2, 4, 14. See
 [LEARNING.md](LEARNING.md). Remaining levels (feedback history, hybrid signals,
 active learning, personal classifier) are queued there.
 
+### Architecture — Plugin pipeline ✅
+The AI ingestion pipeline is now a **plugin system** (`pipeline/`): thumbnails,
+faces, people, CLIP, OCR are plugins run by a `PluginManager`. New capabilities
+(object detection, video, duplicates, new models) register one plugin and slot
+into Import/Re-index with no core changes. See [PLUGINS.md](PLUGINS.md).
+
 ### Phase A — Stabilize v1.0 (in progress)
 - ✅ **Benchmarks** — `scripts/benchmark.py` + [BENCHMARKS.md](BENCHMARKS.md):
   all interactions < 50 ms up to 100k photos.

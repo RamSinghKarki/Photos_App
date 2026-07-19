@@ -123,7 +123,9 @@ checks.
 
 ## Adding a new pipeline module (pattern)
 
-The existing modules share a shape worth copying — e.g. adding OCR:
+New AI stages are added as **plugins** — see [PLUGINS.md](PLUGINS.md) for the
+plugin contract and a worked object-detection example. The per-module shape
+below still applies to the processor a plugin wraps — e.g. adding OCR:
 
 1. **Schema:** the `photos.ocr_text` column already exists. If you need a side
    table, add it to `schema.sql` with `IF NOT EXISTS` (additive, never destructive).

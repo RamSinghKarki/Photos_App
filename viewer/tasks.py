@@ -2,12 +2,13 @@
 
 Runs the whole indexing pipeline off the UI thread so the window never freezes:
 
-    scan  ->  thumbnails  ->  face detection (GPU)  ->  clustering
+    scan  ->  [plugins: thumbnails, faces, people, CLIP, OCR, ...]
 
-Each stage reports progress via Qt signals, which are delivered to the main
-thread automatically. Import and "Re-index" both drive this worker, so the user
-never has to touch the command line. If the InsightFace model is not installed,
-the face/cluster stages are skipped gracefully rather than failing the run.
+The enrichment stages are **plugins** (see :mod:`pipeline`); this worker just
+scans and asks the :class:`~pipeline.manager.PluginManager` to run them, so new
+capabilities plug in without touching the worker. Each stage reports progress
+via Qt signals delivered to the main thread. Import and "Re-index" both drive
+this worker, so the user never touches the command line.
 """
 
 from __future__ import annotations
@@ -20,8 +21,9 @@ from PySide6 import QtCore
 from clustering.incremental import update_people
 from faces.detector import FaceDetector
 from faces.processor import process_faces
+from pipeline.manager import default_manager
+from pipeline.plugins import default_detector
 from scanner.scanner import scan_directory
-from thumbnails.generator import generate_thumbnails
 from utils.logging_setup import get_logger
 
 logger = get_logger("viewer.tasks")
@@ -38,35 +40,8 @@ class PipelineCancelled(Exception):
     """
 
 
-def _default_detector() -> Optional[FaceDetector]:
-    """Build the real InsightFace detector, or None if it isn't installed."""
-    try:
-        import insightface  # noqa: F401  (probe availability before constructing)
-
-        from faces.detector import InsightFaceDetector
-
-        return InsightFaceDetector()
-    except Exception as exc:  # noqa: BLE001 - missing model/runtime is non-fatal
-        logger.warning("Face model unavailable (%s); skipping face stages", exc)
-        return None
-
-
-def _default_clip_backend():
-    """Build the real CLIP backend, or None if the runtime isn't installed."""
-    from search.clip_backend import default_backend
-
-    return default_backend()
-
-
-def _default_ocr_backend():
-    """Build the real OCR backend, or None if RapidOCR isn't installed."""
-    from ocr.backend import default_backend
-
-    return default_backend()
-
-
 class PipelineWorker(QtCore.QThread):
-    """Runs scan/thumbnail/face/cluster stages and emits progress."""
+    """Scans, then runs the ingestion plugins, emitting progress."""
 
     step_changed = QtCore.Signal(str)      # human-readable current stage
     progress = QtCore.Signal(int, int)     # (done, total); total == 0 == indeterminate
@@ -87,9 +62,10 @@ class PipelineWorker(QtCore.QThread):
         self._root = root
         self._run_ai = run_ai
         self._photo_ids = photo_ids
-        self._detector_factory = detector_factory or _default_detector
-        self._clip_factory = clip_factory or _default_clip_backend
-        self._ocr_factory = ocr_factory or _default_ocr_backend
+        # Raw factories (may be None -> the plugins use their own defaults).
+        self._detector_factory = detector_factory
+        self._clip_factory = clip_factory
+        self._ocr_factory = ocr_factory
         self._cancelled = False
 
     def cancel(self) -> None:
@@ -97,13 +73,12 @@ class PipelineWorker(QtCore.QThread):
         self._cancelled = True
 
     def run(self) -> None:  # noqa: D401 - QThread entry point
+        parts: list[str] = []
         try:
-            parts: list[str] = []
-
             # Manual selection: detect faces on exactly the chosen photos, then
-            # regroup people. No scan / thumbnail stages.
+            # regroup people. No scan / other stages.
             if self._photo_ids is not None:
-                detector = self._detector_factory()
+                detector = (self._detector_factory or default_detector)()
                 if detector is None:
                     self.failed.emit("Face model not installed (insightface).")
                     return
@@ -125,40 +100,14 @@ class PipelineWorker(QtCore.QThread):
                 scan = scan_directory(self._root, on_progress=self._on_progress)
                 parts.append(f"+{scan.processed} photos")
 
-            self.step_changed.emit("Building thumbnails")
-            thumbs = generate_thumbnails(on_progress=self._on_progress)
-            parts.append(f"+{thumbs.generated} thumbnails")
-
-            if self._run_ai:
-                detector = self._detector_factory()
-                if detector is not None:
-                    self.step_changed.emit("Detecting faces")
-                    faces = process_faces(detector, on_progress=self._on_progress)
-                    parts.append(f"+{faces.faces} faces")
-
-                    self.step_changed.emit("Recognizing people")
-                    update = update_people()
-                    parts.append(f"{update.recognized} recognized, {update.new_people} new")
-                else:
-                    parts.append("faces skipped (no model)")
-
-                # Semantic-search index (optional; skipped if CLIP not installed).
-                clip_backend = self._clip_factory()
-                if clip_backend is not None:
-                    from search.embedding_engine import embed_images
-
-                    self.step_changed.emit("Indexing search")
-                    emb = embed_images(clip_backend, on_progress=self._on_progress)
-                    parts.append(f"+{emb.embedded} search")
-
-                # OCR text index (optional; skipped if RapidOCR not installed).
-                ocr_backend = self._ocr_factory()
-                if ocr_backend is not None:
-                    from ocr.processor import run_ocr
-
-                    self.step_changed.emit("Reading text (OCR)")
-                    ocr = run_ocr(ocr_backend, on_progress=self._on_progress)
-                    parts.append(f"+{ocr.with_text} OCR")
+            manager = default_manager(
+                self._detector_factory, self._clip_factory, self._ocr_factory
+            )
+            parts.extend(manager.run(
+                run_ai=self._run_ai,
+                on_step=self.step_changed.emit,
+                on_progress=self._on_progress,
+            ))
 
             self.step_changed.emit("Done")
             self.finished_ok.emit("  ·  ".join(parts) if parts else "Nothing to do")

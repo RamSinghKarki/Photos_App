@@ -15,6 +15,7 @@ Search, OCR, and more can be added without redesigning the schema.
 | [docs/DATABASE.md](docs/DATABASE.md) | Schema reference (tables, indexes, helpers, queries) |
 | [docs/AI_PIPELINE.md](docs/AI_PIPELINE.md) | Face + CLIP search pipeline; the modular embedding architecture |
 | [docs/LEARNING.md](docs/LEARNING.md) | Self-improving recognition — person profiles, incremental learning |
+| [docs/PLUGINS.md](docs/PLUGINS.md) | Plugin architecture — add AI stages without touching the core |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Contributor guide — layout, tests, conventions, adding a module |
 | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | How to profile (PHOTOSPHERE_PERF) + the measured optimizations |
 | [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | Query/UI/search timings at 1k / 10k / 100k photos |
