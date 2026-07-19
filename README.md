@@ -3,10 +3,18 @@
 A fully **offline**, AI-powered photo management application for Windows. All
 data and all inference stay on the local machine — no cloud, no APIs.
 
-The full project vision, architecture rules, and per-module Definition of Done
-live in [`docs/PhotoSphere_AI_System_Prompt.md`](docs/PhotoSphere_AI_System_Prompt.md).
 Face recognition is Version 1; the foundation is built so Timeline, Albums,
 Search, OCR, and more can be added without redesigning the schema.
+
+## Documentation
+
+| Doc | What's in it |
+|-----|--------------|
+| [docs/INSTALL.md](docs/INSTALL.md) | Install & first run (Docker or native, GPU setup) |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How it all fits together — layers, data flow, threading, scale |
+| [docs/DATABASE.md](docs/DATABASE.md) | Schema reference (tables, indexes, helpers, queries) |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Contributor guide — layout, tests, conventions, adding a module |
+| [docs/PhotoSphere_AI_System_Prompt.md](docs/PhotoSphere_AI_System_Prompt.md) | Project vision, architecture rules, per-module Definition of Done |
 
 ## Module status
 
