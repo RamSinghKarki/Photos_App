@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
@@ -66,6 +66,7 @@ def generate_thumbnails(
     limit: Optional[int] = None,
     regenerate: bool = False,
     batch_size: Optional[int] = None,
+    on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> ThumbnailSummary:
     """Generate thumbnails for photos that lack one.
 
@@ -73,6 +74,7 @@ def generate_thumbnails(
         limit: Max photos to process this run.
         regenerate: If True, rebuild thumbnails for every photo.
         batch_size: Photos per committed transaction (defaults to configured).
+        on_progress: Optional callback invoked with (done, total) as work runs.
     """
     settings = get_settings()
     settings.ensure_directories()
@@ -85,7 +87,13 @@ def generate_thumbnails(
     read_conn = db.open_connection()
     try:
         cur = write_conn.cursor()
+        with write_conn.cursor() as count_cur:
+            total = db.count_photos_needing_thumbnail(count_cur, regenerate=regenerate)
+            if limit is not None:
+                total = min(total, limit)
+
         committed = 0
+        done = 0
         for photo_id, file_path in db.stream_photos_needing_thumbnail(
             read_conn, regenerate=regenerate, limit=limit
         ):
@@ -96,11 +104,13 @@ def generate_thumbnails(
             except (FileNotFoundError, UnidentifiedImageError, OSError) as exc:
                 summary.unreadable += 1
                 logger.warning("Cannot thumbnail %s: %s", file_path, exc)
-                continue
             except Exception as exc:  # noqa: BLE001 - keep going past any file
                 summary.errors += 1
                 logger.error("Failed to thumbnail %s: %s", file_path, exc)
-                continue
+
+            done += 1
+            if on_progress is not None and (done % 10 == 0 or done == total):
+                on_progress(done, total)
 
             committed += 1
             if committed >= effective_batch:

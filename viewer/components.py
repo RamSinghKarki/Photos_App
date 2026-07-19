@@ -12,7 +12,7 @@ from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from viewer import theme
+from viewer import icons, theme
 
 
 def _human_bytes(num: float) -> str:
@@ -78,10 +78,12 @@ class Sidebar(QtWidgets.QFrame):
             heading = QtWidgets.QLabel(group_name.upper())
             heading.setObjectName("SidebarGroup")
             outer.addWidget(heading)
-            for label, key, glyph in items:
-                button = QtWidgets.QPushButton(f"  {glyph}   {label}")
+            for label, key in items:
+                button = QtWidgets.QPushButton(f"  {label}")
                 button.setObjectName("NavItem")
                 button.setCheckable(True)
+                button.setIcon(icons.nav_icon(key, theme.TEXT))
+                button.setIconSize(QtCore.QSize(20, 20))
                 button.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
                 button.clicked.connect(lambda _=False, k=key: self.navigate.emit(k))
                 self._group.addButton(button)
@@ -100,6 +102,7 @@ class TopBar(QtWidgets.QFrame):
 
     search_changed = QtCore.Signal(str)
     import_requested = QtCore.Signal()
+    reindex_requested = QtCore.Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -108,9 +111,11 @@ class TopBar(QtWidgets.QFrame):
 
         layout = QtWidgets.QHBoxLayout(self)
         layout.setContentsMargins(16, 8, 16, 8)
-        layout.setSpacing(12)
+        layout.setSpacing(10)
 
-        logo = QtWidgets.QLabel("◆ PhotoSphere AI")
+        logo_mark = QtWidgets.QLabel("◆")
+        logo_mark.setObjectName("LogoMark")
+        logo = QtWidgets.QLabel("PhotoSphere AI")
         logo.setObjectName("Logo")
 
         self.search = QtWidgets.QLineEdit()
@@ -120,15 +125,25 @@ class TopBar(QtWidgets.QFrame):
         self.search.textChanged.connect(self.search_changed.emit)
         self.search.setMaximumWidth(520)
 
-        import_btn = QtWidgets.QPushButton("Import Folder")
-        import_btn.setObjectName("Primary")
-        import_btn.clicked.connect(self.import_requested.emit)
+        self.reindex_btn = QtWidgets.QPushButton("Re-index")
+        self.reindex_btn.clicked.connect(self.reindex_requested.emit)
 
+        self.import_btn = QtWidgets.QPushButton("Import Folder")
+        self.import_btn.setObjectName("Primary")
+        self.import_btn.clicked.connect(self.import_requested.emit)
+
+        layout.addWidget(logo_mark)
         layout.addWidget(logo)
-        layout.addSpacing(8)
+        layout.addSpacing(12)
         layout.addWidget(self.search, 1)
         layout.addStretch(1)
-        layout.addWidget(import_btn)
+        layout.addWidget(self.reindex_btn)
+        layout.addWidget(self.import_btn)
+
+    def set_busy(self, busy: bool) -> None:
+        """Disable the import/re-index buttons while a pipeline is running."""
+        self.import_btn.setEnabled(not busy)
+        self.reindex_btn.setEnabled(not busy)
 
     def focus_search(self) -> None:
         """Move keyboard focus to the search field (Ctrl+F)."""
@@ -137,29 +152,43 @@ class TopBar(QtWidgets.QFrame):
 
 
 class StatusBar(QtWidgets.QFrame):
-    """Bottom status bar with library counts and environment info."""
+    """Bottom status bar: library counts, live job progress, GPU and AI status."""
 
     def __init__(self) -> None:
         super().__init__()
         self.setObjectName("StatusBar")
-        self.setFixedHeight(28)
+        self.setFixedHeight(30)
 
         layout = QtWidgets.QHBoxLayout(self)
         layout.setContentsMargins(14, 0, 14, 0)
-        layout.setSpacing(18)
+        layout.setSpacing(16)
 
         self._photos = self._item("Photos: —")
         self._faces = self._item("Faces: —")
         self._people = self._item("People: —")
         self._storage = self._item("Storage: —")
-        backend = self._item("PostgreSQL • pgvector")
-        ai = self._item("AI: Idle")
+
+        # Job progress (hidden until a pipeline runs).
+        self._step = self._item("")
+        self._progress = QtWidgets.QProgressBar()
+        self._progress.setFixedWidth(160)
+        self._progress.setTextVisible(False)
+        self._progress.setVisible(False)
+
+        self._backend = self._item("PostgreSQL • pgvector")
+        self._gpu = self._item("GPU: —")
+        self._ai = self._item("AI: Idle")
+        self._ai.setObjectName("StatusAccent")
 
         for widget in (self._photos, self._faces, self._people, self._storage):
             layout.addWidget(widget)
         layout.addStretch(1)
-        layout.addWidget(backend)
-        layout.addWidget(ai)
+        layout.addWidget(self._step)
+        layout.addWidget(self._progress)
+        layout.addStretch(1)
+        layout.addWidget(self._backend)
+        layout.addWidget(self._gpu)
+        layout.addWidget(self._ai)
 
     @staticmethod
     def _item(text: str) -> QtWidgets.QLabel:
@@ -173,6 +202,38 @@ class StatusBar(QtWidgets.QFrame):
         self._faces.setText(f"Faces: {stats.get('faces', 0):,}")
         self._people.setText(f"People: {stats.get('persons', 0):,}")
         self._storage.setText(f"Storage: {_human_bytes(stats.get('storage_bytes', 0))}")
+
+    def set_gpu(self, text: str) -> None:
+        """Set the GPU badge (e.g. 'GPU: NVIDIA RTX 5060' or 'GPU: CPU only')."""
+        self._gpu.setText(text)
+
+    def set_step(self, step: Optional[str]) -> None:
+        """Show/clear the current pipeline stage and toggle the progress bar."""
+        if step:
+            self._step.setText(step)
+            self._ai.setText(f"AI: {step}")
+            self._progress.setVisible(True)
+        else:
+            self._step.setText("")
+            self._ai.setText("AI: Idle")
+            self._progress.setVisible(False)
+            self._progress.reset()
+
+    def set_progress(self, done: int, total: int) -> None:
+        """Update the progress bar; total == 0 shows an indeterminate (busy) bar."""
+        if total <= 0:
+            self._progress.setRange(0, 0)  # busy indicator
+            self._step_suffix(done, None)
+        else:
+            self._progress.setRange(0, total)
+            self._progress.setValue(done)
+            self._step_suffix(done, total)
+
+    def _step_suffix(self, done: int, total: Optional[int]) -> None:
+        base = self._step.text().split("  ")[0]
+        if not base:
+            return
+        self._step.setText(f"{base}  {done}/{total}" if total else f"{base}  {done}")
 
 
 class PersonCard(QtWidgets.QFrame):

@@ -249,31 +249,54 @@ scratch each time, so it is safe to run repeatedly while tuning `--eps`.
 
 ## Usage — Module 4: Viewer (desktop app)
 
-The native PySide6/Qt desktop UI. Generate thumbnails first so the gallery is
-fast (the gallery shows cached thumbnails, never originals):
+Just launch the app — the whole pipeline runs from inside it:
 
 ```bash
-python -m scripts.generate_thumbnails      # cache grid thumbnails
-python -m scripts.app                       # launch the desktop app
+python -m scripts.app
 ```
 
+Then click **Import Folder** (`Ctrl+O`) and pick a folder. Everything runs in
+the background with a live progress bar in the status bar:
+
+> **scan → thumbnails → face detection (GPU) → clustering**
+
+The window stays responsive throughout, and the gallery/People/Dashboard refresh
+automatically when it finishes. **Re-index** (`Ctrl+R`) re-runs thumbnails + AI
+over the photos you already imported. You never need the command line.
+
+*(The individual `scripts.scan` / `detect_faces` / `cluster_faces` /
+`generate_thumbnails` commands still exist for automation/headless use, but the
+app does all of it for you.)*
+
 What works today:
-- **App shell** — top bar (logo, always-available search, Import Folder),
-  grouped sidebar, and a status bar with live library counts.
+- **Fluent dark UI** — soft surfaces, drawn line-art icons (no emoji), pill
+  search, accent-highlighted navigation.
+- **Background pipeline** — Import / Re-index run off the UI thread with a
+  progress bar and per-stage status; the **GPU badge** in the status bar shows
+  whether face detection will use CUDA or CPU.
 - **Dashboard** — stat tiles (photos, faces, people, storage) and recent scans.
-- **Photos** — a virtualized thumbnail grid (only visible tiles render; memory
-  stays flat on large libraries). `+` / `-` zoom the tiles; double-click or
-  Enter opens the viewer.
-- **People** — reflowing person cards with circular cover faces; click a person
-  to see their photos.
+- **Photos** — a virtualized grid with **incremental paging** (loads a page at a
+  time as you scroll) and **off-thread thumbnail decoding**, so it stays smooth
+  on 100k+ libraries. `+` / `-` zoom; double-click or Enter opens the viewer.
+- **People** — reflowing person cards with circular cover faces; click to see
+  that person's photos.
 - **Photo viewer** — full-resolution image with a collapsible metadata panel
   (camera, date, dimensions, GPS, …); `←`/`→` navigate, `I` toggles the panel,
   `F11` full screen, `Esc` closes.
-- **Import Folder** (`Ctrl+O`) — runs the scan + thumbnailing on a background
-  thread, so the UI stays responsive; the gallery refreshes when it finishes.
+- **Search** — the top bar filters the gallery by filename/camera as you type
+  (debounced). Semantic search is a later module.
 
-Keyboard: `Ctrl+O` import · `Ctrl+F` search · `Ctrl+Q` quit · `+`/`-` zoom grid
-· `F11` full screen · `←`/`→` prev/next in viewer · `Esc` close.
+Keyboard: `Ctrl+O` import · `Ctrl+R` re-index · `Ctrl+F` search · `Ctrl+Q` quit
+· `+`/`-` zoom grid · `F11` full screen · `←`/`→` prev/next in viewer · `Esc`
+close.
+
+### GPU
+
+Face detection runs on the GPU via `onnxruntime-gpu` (with automatic CPU
+fallback). The status bar's **GPU** badge reports the detected device — it uses
+PyTorch if present, otherwise the onnxruntime CUDA provider. If it shows
+"CPU only" but you have an NVIDIA GPU, install `onnxruntime-gpu` (not the CPU
+`onnxruntime`).
 
 Sidebar sections tied to not-yet-built backend modules (Timeline, Videos,
 Search, Objects, Similar, Albums, Favorites, Archive, Trash, Settings) show an
@@ -282,11 +305,12 @@ honest "planned" page rather than faking functionality.
 ### How to verify correctness
 
 ```bash
-pytest -q     # includes headless (offscreen) Qt smoke tests
+pytest -q     # includes headless (offscreen) Qt + pipeline-worker tests
 ```
 
-Face detection needs a GPU, but everything else — scan, thumbnails, clustering,
-and the whole UI — runs and is tested headlessly.
+Face detection needs the InsightFace model (and ideally a GPU), but everything
+else — scan, thumbnails, clustering, the background pipeline worker, and the
+whole UI — runs and is tested headlessly.
 
 ## Design notes / known limitations
 
@@ -315,13 +339,14 @@ and the whole UI — runs and is tested headlessly.
   very sparse faces stay ungrouped. Tune `--eps` / `--min-samples` per library.
 
 **Module 4 (Viewer)**
-- The gallery loads all photo rows (ids + paths) at once and lazy-loads
-  thumbnails; true paged/infinite scrolling is a future refinement. Thumbnails
-  themselves are already fully virtualized.
+- The gallery uses incremental paging + off-thread thumbnail decoding, so it
+  stays responsive on large libraries. Clustering during Import still loads all
+  embeddings into memory (see Module 3) — incremental clustering is future work.
+- Import / Re-index run the full pipeline (scan → thumbnails → faces →
+  clustering) in the background. If the InsightFace model isn't installed, the
+  face/cluster stages are skipped and the rest still completes.
 - Person renaming/merge, favorites, albums, trash, and semantic search are
   shown as planned sections — their backend modules are not built yet.
-- Import runs scan + thumbnailing in the background; face detection and
-  clustering are still run from their CLIs (they need the GPU model).
 
 ## Performance notes
 

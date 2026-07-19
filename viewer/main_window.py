@@ -1,8 +1,10 @@
 """The main application window: top bar + sidebar + pages + status bar.
 
-Wires navigation, the always-available search box, keyboard shortcuts, and a
-background import worker so the UI stays responsive while a folder is scanned
-and thumbnailed.
+Wires navigation, the always-available (debounced) search, keyboard shortcuts,
+and the background pipeline worker. Import and Re-index run the whole
+scan → thumbnail → face → cluster pipeline off the UI thread with live progress
+in the status bar, so the user never touches the command line and the window
+stays responsive.
 """
 
 from __future__ import annotations
@@ -12,13 +14,13 @@ from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from scanner.scanner import scan_directory
-from thumbnails.generator import generate_thumbnails
 from utils.logging_setup import get_logger
-from viewer import data, theme
+from viewer import data
 from viewer.components import ComingSoonPage, Sidebar, StatusBar, TopBar
+from viewer.gpuinfo import detect_gpu
 from viewer.pages import DashboardPage, GalleryPage, PeoplePage, PersonDetailPage
 from viewer.photo_viewer import PhotoViewer
+from viewer.tasks import PipelineWorker
 
 logger = get_logger("viewer.main")
 
@@ -38,43 +40,21 @@ _PLANNED_NOTES = {
 }
 
 
-class ScanWorker(QtCore.QThread):
-    """Runs a scan + thumbnail pass off the UI thread.
-
-    Both steps open their own database connections internally, so nothing on the
-    main thread's connections is shared across threads.
-    """
-
-    done = QtCore.Signal(int)  # number of newly processed photos
-
-    def __init__(self, root: Path) -> None:
-        super().__init__()
-        self._root = root
-
-    def run(self) -> None:  # noqa: D401 - QThread entry point
-        try:
-            summary = scan_directory(self._root)
-            generate_thumbnails()
-            self.done.emit(summary.processed)
-        except Exception as exc:  # noqa: BLE001 - surface as zero, log details
-            logger.error("Import failed for %s: %s", self._root, exc)
-            self.done.emit(-1)
-
-
 class MainWindow(QtWidgets.QMainWindow):
     """Assembles the whole application shell."""
 
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("PhotoSphere AI")
-        self.resize(1280, 820)
+        self.resize(1320, 860)
 
-        self._worker: Optional[ScanWorker] = None
+        self._worker: Optional[PipelineWorker] = None
 
         # --- Top bar ---
         self._topbar = TopBar()
         self._topbar.search_changed.connect(self._on_search)
         self._topbar.import_requested.connect(self._on_import)
+        self._topbar.reindex_requested.connect(self._on_reindex)
 
         # --- Sidebar ---
         self._sidebar = Sidebar()
@@ -105,11 +85,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self._page_keys[key] = self._stack.addWidget(widget)
         self._detail_index = self._stack.addWidget(self._person_detail)
 
-        # Planned-feature pages.
         self._coming: dict[str, int] = {}
         for key, note in _PLANNED_NOTES.items():
-            title = key.capitalize()
-            self._coming[key] = self._stack.addWidget(ComingSoonPage(title, note))
+            self._coming[key] = self._stack.addWidget(ComingSoonPage(key.capitalize(), note))
 
         # --- Layout: sidebar | content ---
         content = QtWidgets.QHBoxLayout()
@@ -130,6 +108,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(root)
 
         self._install_shortcuts()
+        self._status.set_gpu(detect_gpu().badge())
         self.show_page("dashboard")
         self.refresh_all()
 
@@ -172,27 +151,48 @@ class MainWindow(QtWidgets.QMainWindow):
         viewer = PhotoViewer(photo_ids, start, self)
         viewer.exec()
 
-    # -- actions -------------------------------------------------------------
+    # -- search --------------------------------------------------------------
     def _on_search(self, term: str) -> None:
+        # Switch to the gallery once; the page debounces the actual reload so we
+        # do not re-query on every keystroke.
+        self._sidebar.select("photos")
+        self._stack.setCurrentIndex(self._page_keys["photos"])
         self._gallery.set_search(term)
-        self.show_page("photos")
 
+    # -- pipeline ------------------------------------------------------------
     def _on_import(self) -> None:
         directory = QtWidgets.QFileDialog.getExistingDirectory(self, "Import Folder")
-        if not directory:
-            return
-        self._status.update_stats(data.library_stats())
-        self._topbar.search.setPlaceholderText("Indexing…")
-        self._worker = ScanWorker(Path(directory))
-        self._worker.done.connect(self._on_import_done)
+        if directory:
+            self._start_pipeline(Path(directory))
+
+    def _on_reindex(self) -> None:
+        # Re-run thumbnails + AI over already-imported photos (no new scan).
+        self._start_pipeline(root=None)
+
+    def _start_pipeline(self, root: Optional[Path]) -> None:
+        if self._worker is not None and self._worker.isRunning():
+            return  # a pipeline is already running
+        self._topbar.set_busy(True)
+        self._worker = PipelineWorker(root=root, run_ai=True)
+        self._worker.step_changed.connect(self._status.set_step)
+        self._worker.progress.connect(self._status.set_progress)
+        self._worker.finished_ok.connect(self._on_pipeline_done)
+        self._worker.failed.connect(self._on_pipeline_failed)
         self._worker.start()
 
-    def _on_import_done(self, processed: int) -> None:
-        self._topbar.search.setPlaceholderText("Search photos…  (Ctrl+F)")
-        if processed >= 0:
-            logger.info("Import finished: %d new photos", processed)
-        self.refresh_all()
+    def _on_pipeline_done(self, summary: str) -> None:
+        logger.info("Pipeline finished: %s", summary)
+        self._finish_pipeline()
         self.show_page("photos")
+
+    def _on_pipeline_failed(self, message: str) -> None:
+        self._finish_pipeline()
+        QtWidgets.QMessageBox.warning(self, "Pipeline error", message)
+
+    def _finish_pipeline(self) -> None:
+        self._status.set_step(None)
+        self._topbar.set_busy(False)
+        self.refresh_all()
 
     # -- shortcuts -----------------------------------------------------------
     def _install_shortcuts(self) -> None:
@@ -201,6 +201,7 @@ class MainWindow(QtWidgets.QMainWindow):
             shortcut.activated.connect(handler)
 
         add("Ctrl+O", self._on_import)
+        add("Ctrl+R", self._on_reindex)
         add("Ctrl+F", self._topbar.focus_search)
         add("Ctrl+Q", self.close)
         add("F11", self._toggle_fullscreen)

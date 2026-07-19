@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 from PIL import Image, UnidentifiedImageError
@@ -112,6 +112,7 @@ def process_faces(
     reprocess: bool = False,
     limit: Optional[int] = None,
     batch_size: Optional[int] = None,
+    on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> FaceSummary:
     """Run face detection over photos that need it.
 
@@ -121,6 +122,7 @@ def process_faces(
             per photo before re-detecting) instead of only unprocessed ones.
         limit: Maximum number of photos to process this run.
         batch_size: Photos per committed transaction (defaults to configured).
+        on_progress: Optional callback invoked with (done, total) as work runs.
 
     Returns:
         A :class:`FaceSummary` of the run.
@@ -145,7 +147,13 @@ def process_faces(
             write_conn.commit()  # commit before streaming so the read sees it
             logger.info("Reprocess requested: %d photos re-queued for faces", reset)
 
+        with write_conn.cursor() as count_cur:
+            total = db.count_photos_pending_faces(count_cur)
+            if limit is not None:
+                total = min(total, limit)
+
         committed = 0
+        done = 0
         for photo_id, file_path in db.stream_photos_pending_faces(read_conn, limit=limit):
             # A per-photo savepoint isolates failures: a bad image rolls back
             # only its own writes, never the rest of the uncommitted batch.
@@ -184,6 +192,10 @@ def process_faces(
                 cur.execute("ROLLBACK TO SAVEPOINT photo_sp")
                 cur.execute("RELEASE SAVEPOINT photo_sp")
                 logger.error("Failed to process faces for %s: %s", file_path, exc)
+
+            done += 1
+            if on_progress is not None and (done % 5 == 0 or done == total):
+                on_progress(done, total)
 
         write_conn.commit()
     except Exception:

@@ -20,8 +20,14 @@ logger = get_logger("viewer.app")
 
 
 def create_application(argv: list[str]) -> QtWidgets.QApplication:
-    """Create and style the QApplication (separated out for testability)."""
-    app = QtWidgets.QApplication(argv)
+    """Create and style the QApplication, or reuse the existing singleton.
+
+    QApplication is a process-wide singleton; reusing an existing instance lets
+    multiple entry points (and multiple test modules) call this safely.
+    """
+    app = QtWidgets.QApplication.instance()
+    if app is None:
+        app = QtWidgets.QApplication(argv)
     app.setApplicationName("PhotoSphere AI")
     app.setStyleSheet(theme.build_stylesheet())
     return app

@@ -371,6 +371,21 @@ def set_thumbnail_path(cur: PgCursor, photo_id: int, thumbnail_path: str) -> Non
     )
 
 
+def count_photos_needing_thumbnail(cur: PgCursor, regenerate: bool = False) -> int:
+    """Return how many photos still need a thumbnail (all, if regenerating)."""
+    if regenerate:
+        cur.execute("SELECT count(*) FROM photos")
+    else:
+        cur.execute("SELECT count(*) FROM photos WHERE thumbnail_path IS NULL")
+    return int(cur.fetchone()[0])
+
+
+def count_photos_pending_faces(cur: PgCursor) -> int:
+    """Return how many photos have not yet been through face detection."""
+    cur.execute("SELECT count(*) FROM photos WHERE faces_processed = FALSE")
+    return int(cur.fetchone()[0])
+
+
 # ---------------------------------------------------------------------------
 # Read helpers for the Viewer UI (read-only; the UI never writes SQL directly)
 # ---------------------------------------------------------------------------

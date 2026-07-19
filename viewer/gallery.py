@@ -1,16 +1,21 @@
-"""Virtualized photo grid for the gallery.
+"""Virtualized, paged photo grid with asynchronous thumbnail loading.
 
-A :class:`PhotoGridModel` backs a :class:`PhotoGrid` (``QListView`` in icon
-mode). Only visible tiles request data, and thumbnails are decoded lazily and
-cached with a bounded LRU, so a 100k-photo library scrolls smoothly without
-loading every image — the core performance requirement for the gallery.
+Two things keep the gallery smooth on very large libraries:
+
+* **Incremental paging** — the model loads photos a page at a time via Qt's
+  ``canFetchMore``/``fetchMore`` protocol, so opening the Photos view never
+  blocks loading 100k rows at once; more load as you scroll.
+* **Off-thread decoding** — thumbnails are decoded on a :class:`QThreadPool`
+  as ``QImage`` (thread-safe), then converted to ``QPixmap`` on the GUI thread
+  and cached with a bounded LRU. The UI thread never blocks on disk I/O, which
+  is what previously made scrolling stutter.
 """
 
 from __future__ import annotations
 
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -19,11 +24,15 @@ from viewer import theme
 # Roles exposed by the model.
 PHOTO_ID_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 1
 
+# (offset, limit) -> rows of (id, file_path, thumbnail_path, taken_at)
+Fetcher = Callable[[int, int], list[tuple[int, str, Optional[str], Any]]]
+
 _PLACEHOLDER_CACHE: dict[int, QtGui.QPixmap] = {}
+_PAGE_SIZE = 300
 
 
 def _placeholder(size: int) -> QtGui.QPixmap:
-    """Return a neutral rounded tile used before/without a thumbnail."""
+    """Return a neutral rounded tile shown until a thumbnail is decoded."""
     if size not in _PLACEHOLDER_CACHE:
         pm = QtGui.QPixmap(size, size)
         pm.fill(QtCore.Qt.GlobalColor.transparent)
@@ -37,45 +46,94 @@ def _placeholder(size: int) -> QtGui.QPixmap:
     return _PLACEHOLDER_CACHE[size]
 
 
+class _ThumbSignals(QtCore.QObject):
+    """Carries a decoded image back to the model on the GUI thread."""
+
+    loaded = QtCore.Signal(int, int, object)  # generation, row, QImage
+
+
+class _ThumbTask(QtCore.QRunnable):
+    """Decodes and scales one thumbnail on a pool thread."""
+
+    def __init__(self, generation: int, row: int, path: str, size: int, signals: _ThumbSignals):
+        super().__init__()
+        self._generation = generation
+        self._row = row
+        self._path = path
+        self._size = size
+        self._signals = signals
+
+    def run(self) -> None:
+        image = QtGui.QImage(self._path)  # QImage is safe to build off the GUI thread
+        if not image.isNull():
+            image = image.scaled(
+                self._size, self._size,
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
+            )
+        self._signals.loaded.emit(self._generation, self._row, image)
+
+
 class PhotoGridModel(QtCore.QAbstractListModel):
-    """List model over photo rows, decoding thumbnails on demand.
+    """Paged list model over photo rows with async thumbnail decoding."""
 
-    Rows are (id, file_path, thumbnail_path, taken_at). Thumbnail pixmaps are
-    built lazily in :meth:`data` and held in a bounded LRU cache so memory stays
-    flat regardless of library size.
-    """
-
-    def __init__(self, tile: int = 160, cache_size: int = 500) -> None:
+    def __init__(self, tile: int = 168, cache_size: int = 800) -> None:
         super().__init__()
         self._rows: list[tuple[int, str, Optional[str], Any]] = []
+        self._fetch: Optional[Fetcher] = None
+        self._exhausted = True
         self._tile = tile
+
         self._cache: "OrderedDict[int, QtGui.QPixmap]" = OrderedDict()
         self._cache_size = cache_size
+        self._inflight: set[int] = set()
+        self._generation = 0
 
-    # -- data management -----------------------------------------------------
-    def set_rows(self, rows: list[tuple[int, str, Optional[str], Any]]) -> None:
-        """Replace the model's rows and clear the pixmap cache."""
+        self._pool = QtCore.QThreadPool.globalInstance()
+        self._signals = _ThumbSignals()
+        self._signals.loaded.connect(self._on_thumb_loaded)
+
+    # -- query management ----------------------------------------------------
+    def set_fetcher(self, fetch: Fetcher) -> None:
+        """Point the model at a new query and load its first page."""
         self.beginResetModel()
-        self._rows = rows
+        self._fetch = fetch
+        self._rows = []
         self._cache.clear()
+        self._inflight.clear()
+        self._generation += 1  # invalidate in-flight decodes from the old query
+        self._exhausted = False
         self.endResetModel()
+        self._load_next_page()
 
+    def _load_next_page(self) -> None:
+        if self._fetch is None or self._exhausted:
+            return
+        page = self._fetch(len(self._rows), _PAGE_SIZE)
+        if not page:
+            self._exhausted = True
+            return
+        start = len(self._rows)
+        self.beginInsertRows(QtCore.QModelIndex(), start, start + len(page) - 1)
+        self._rows.extend(page)
+        self.endInsertRows()
+        if len(page) < _PAGE_SIZE:
+            self._exhausted = True
+
+    # -- zoom ----------------------------------------------------------------
     def set_tile_size(self, tile: int) -> None:
-        """Change the thumbnail tile size (zoom) and refresh."""
         self._tile = tile
         self._cache.clear()
+        self._inflight.clear()
+        self._generation += 1
         if self._rows:
-            top = self.index(0)
-            bottom = self.index(len(self._rows) - 1)
-            self.dataChanged.emit(top, bottom, [QtCore.Qt.ItemDataRole.DecorationRole])
+            self.dataChanged.emit(
+                self.index(0), self.index(len(self._rows) - 1),
+                [QtCore.Qt.ItemDataRole.DecorationRole],
+            )
 
     def tile_size(self) -> int:
         return self._tile
-
-    def photo_id_at(self, row: int) -> Optional[int]:
-        if 0 <= row < len(self._rows):
-            return self._rows[row][0]
-        return None
 
     def photo_ids(self) -> list[int]:
         return [row[0] for row in self._rows]
@@ -83,6 +141,13 @@ class PhotoGridModel(QtCore.QAbstractListModel):
     # -- QAbstractListModel --------------------------------------------------
     def rowCount(self, parent: QtCore.QModelIndex = QtCore.QModelIndex()) -> int:  # noqa: N802
         return 0 if parent.isValid() else len(self._rows)
+
+    def canFetchMore(self, parent: QtCore.QModelIndex = QtCore.QModelIndex()) -> bool:  # noqa: N802
+        return not parent.isValid() and not self._exhausted
+
+    def fetchMore(self, parent: QtCore.QModelIndex = QtCore.QModelIndex()) -> None:  # noqa: N802
+        if not parent.isValid():
+            self._load_next_page()
 
     def data(self, index: QtCore.QModelIndex, role: int = QtCore.Qt.ItemDataRole.DisplayRole):
         if not index.isValid() or not (0 <= index.row() < len(self._rows)):
@@ -97,29 +162,33 @@ class PhotoGridModel(QtCore.QAbstractListModel):
             return self._thumbnail(index.row(), thumb_path)
         return None
 
-    # -- thumbnail cache -----------------------------------------------------
+    # -- async thumbnail cache ----------------------------------------------
     def _thumbnail(self, row: int, thumb_path: Optional[str]) -> QtGui.QPixmap:
         if row in self._cache:
             self._cache.move_to_end(row)
             return self._cache[row]
 
-        pixmap = QtGui.QPixmap()
-        if thumb_path and Path(thumb_path).exists():
-            pixmap = QtGui.QPixmap(thumb_path)
+        if thumb_path and row not in self._inflight and Path(thumb_path).exists():
+            self._inflight.add(row)
+            task = _ThumbTask(self._generation, row, thumb_path, self._tile, self._signals)
+            self._pool.start(task)
 
-        if pixmap.isNull():
-            pixmap = _placeholder(self._tile)
-        else:
-            pixmap = pixmap.scaled(
-                self._tile, self._tile,
-                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                QtCore.Qt.TransformationMode.SmoothTransformation,
-            )
+        return _placeholder(self._tile)
 
+    @QtCore.Slot(int, int, object)
+    def _on_thumb_loaded(self, generation: int, row: int, image: QtGui.QImage) -> None:
+        self._inflight.discard(row)
+        if generation != self._generation or row >= len(self._rows):
+            return  # result belongs to a superseded query / zoom
+        if image.isNull():
+            return
+        pixmap = QtGui.QPixmap.fromImage(image)  # QPixmap must be built on the GUI thread
         self._cache[row] = pixmap
         if len(self._cache) > self._cache_size:
-            self._cache.popitem(last=False)  # evict least-recently-used
-        return pixmap
+            self._cache.popitem(last=False)
+        self.dataChanged.emit(
+            self.index(row), self.index(row), [QtCore.Qt.ItemDataRole.DecorationRole]
+        )
 
 
 class PhotoGrid(QtWidgets.QListView):
@@ -138,9 +207,9 @@ class PhotoGrid(QtWidgets.QListView):
         self.setMovement(QtWidgets.QListView.Movement.Static)
         self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setUniformItemSizes(True)
-        self.setSpacing(8)
+        self.setSpacing(10)
         self.setWordWrap(False)
-        self.verticalScrollBar().setSingleStep(24)
+        self.verticalScrollBar().setSingleStep(28)
         self._apply_tile()
 
         self.doubleClicked.connect(self._on_activated)
@@ -148,16 +217,14 @@ class PhotoGrid(QtWidgets.QListView):
     def _apply_tile(self) -> None:
         tile = self._model.tile_size()
         self.setIconSize(QtCore.QSize(tile, tile))
-        self.setGridSize(QtCore.QSize(tile + 16, tile + 16))
+        self.setGridSize(QtCore.QSize(tile + 18, tile + 18))
 
     def set_tile_size(self, tile: int) -> None:
-        """Zoom the grid tiles (bounded)."""
-        tile = max(96, min(360, tile))
+        tile = max(112, min(360, tile))
         self._model.set_tile_size(tile)
         self._apply_tile()
 
     def zoom(self, delta: int) -> None:
-        """Grow/shrink tiles by ``delta`` px (keyboard +/-)."""
         self.set_tile_size(self._model.tile_size() + delta)
 
     def _on_activated(self, index: QtCore.QModelIndex) -> None:

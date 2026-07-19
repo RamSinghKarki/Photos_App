@@ -1,155 +1,152 @@
-"""Dark-first visual theme for the PhotoSphere AI desktop UI.
+"""Windows 11 Fluent-inspired dark theme for PhotoSphere AI.
 
-A single source of truth for colours, radii, and the application stylesheet, so
-every widget looks like one native app rather than a web page. The palette
-follows the design brief: near-black background, dark-gray surfaces, a blue
-primary, a green "active" accent, amber warnings and red errors, with 8–12 px
-rounded corners.
+A single source of truth for colours, radii, and the application stylesheet.
+The look leans on soft dark surfaces, a light-blue accent, subtle borders and
+hover states, and a left accent indicator on the selected nav item — so the app
+reads as modern native desktop software, not a web page.
 """
 
 from __future__ import annotations
 
-# --- Palette ---------------------------------------------------------------
-BACKGROUND = "#0f1115"     # near-black app background
-SURFACE = "#181b21"        # cards, panels
-SURFACE_ALT = "#212530"    # hover / elevated surfaces
-BORDER = "#2a2f3a"
-PRIMARY = "#4a9eff"        # blue — selection, links, focus
-ACCENT = "#3ecf8e"         # green — active indexing / success
-WARNING = "#f5a623"        # amber
-ERROR = "#ff5c5c"          # red
-TEXT = "#e6e8eb"           # primary text
-TEXT_MUTED = "#9aa0a8"     # secondary/metadata text
+# --- Palette (Fluent dark) -------------------------------------------------
+BACKGROUND = "#17181d"     # app background
+SURFACE = "#20222a"        # cards, bars, panels
+SURFACE_ALT = "#2a2d37"    # hover / elevated
+BORDER = "#31353f"
+PRIMARY = "#4cc2ff"        # Windows 11 accent blue
+PRIMARY_DEEP = "#3a86ff"   # stronger blue for filled buttons
+ACCENT = "#5bd6a0"         # green — active / success
+WARNING = "#f5b445"        # amber
+ERROR = "#ff6b6b"          # red
+TEXT = "#e8eaed"           # primary text
+TEXT_MUTED = "#98a0ad"     # secondary/metadata text
 
-RADIUS = 10                # default corner radius (px)
+RADIUS = 8                 # default corner radius (px)
 
-# Sidebar sections -> (label, page-key, glyph). Glyphs are plain unicode so no
-# icon assets are required for a first version.
-SIDEBAR_SECTIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
+# Sidebar groups -> (label, page-key). Icons come from viewer.icons keyed by
+# page-key; the design uses drawn line-art, never emoji.
+SIDEBAR_SECTIONS: list[tuple[str, list[tuple[str, str]]]] = [
     ("Library", [
-        ("Dashboard", "dashboard", "▦"),
-        ("Photos", "photos", "▨"),
-        ("Timeline", "timeline", "🕒"),
-        ("Videos", "videos", "▷"),
+        ("Dashboard", "dashboard"),
+        ("Photos", "photos"),
+        ("Timeline", "timeline"),
+        ("Videos", "videos"),
     ]),
     ("AI", [
-        ("People", "people", "☺"),
-        ("Search", "search", "⌕"),
-        ("Objects", "objects", "◈"),
-        ("Similar Photos", "similar", "❏"),
+        ("People", "people"),
+        ("Search", "search"),
+        ("Objects", "objects"),
+        ("Similar Photos", "similar"),
     ]),
     ("Organization", [
-        ("Albums", "albums", "▤"),
-        ("Favorites", "favorites", "★"),
-        ("Archive", "archive", "▢"),
-        ("Trash", "trash", "🗑"),
+        ("Albums", "albums"),
+        ("Favorites", "favorites"),
+        ("Archive", "archive"),
+        ("Trash", "trash"),
     ]),
     ("System", [
-        ("Settings", "settings", "⚙"),
-        ("About", "about", "ⓘ"),
+        ("Settings", "settings"),
+        ("About", "about"),
     ]),
 ]
 
-# Page keys that are fully implemented in this module; everything else renders
-# an honest "planned" page tied to a future backend module.
+# Page keys fully implemented here; everything else renders a "planned" page.
 IMPLEMENTED_PAGES = {"dashboard", "photos", "people"}
 
 
 def build_stylesheet() -> str:
     """Return the global Qt stylesheet (QSS) for the application."""
     return f"""
-    QWidget {{
-        background-color: {BACKGROUND};
-        color: {TEXT};
-        font-family: "Segoe UI", "DejaVu Sans", sans-serif;
+    * {{
+        font-family: "Segoe UI Variable", "Segoe UI", "Inter", "DejaVu Sans", sans-serif;
         font-size: 14px;
+        outline: none;
     }}
-    QLabel#H1 {{ font-size: 26px; font-weight: 600; }}
-    QLabel#H2 {{ font-size: 18px; font-weight: 600; }}
-    QLabel#Muted {{ color: {TEXT_MUTED}; }}
-    QLabel#Mono {{ font-family: "DejaVu Sans Mono", monospace; color: {TEXT_MUTED}; }}
+    QWidget {{ background-color: {BACKGROUND}; color: {TEXT}; }}
 
-    /* Surfaces / cards */
+    QLabel#H1 {{ font-size: 24px; font-weight: 700; }}
+    QLabel#H2 {{ font-size: 16px; font-weight: 600; }}
+    QLabel#Muted {{ color: {TEXT_MUTED}; }}
+    QLabel#Mono {{ font-family: "Cascadia Code", "Consolas", "DejaVu Sans Mono", monospace; color: {TEXT}; }}
+
     QFrame#Card, QFrame#Surface {{
         background-color: {SURFACE};
         border: 1px solid {BORDER};
-        border-radius: {RADIUS}px;
+        border-radius: {RADIUS + 2}px;
     }}
+    QFrame#Card:hover {{ border-color: {PRIMARY}; }}
 
     /* Top bar */
-    QFrame#TopBar {{
-        background-color: {SURFACE};
-        border: none;
-        border-bottom: 1px solid {BORDER};
-    }}
-    QLabel#Logo {{ font-size: 16px; font-weight: 700; color: {PRIMARY}; }}
+    QFrame#TopBar {{ background-color: {SURFACE}; border: none; border-bottom: 1px solid {BORDER}; }}
+    QLabel#Logo {{ font-size: 15px; font-weight: 800; color: {TEXT}; }}
+    QLabel#LogoMark {{ font-size: 18px; font-weight: 800; color: {PRIMARY}; }}
 
-    /* Search box */
+    /* Search box (pill) */
     QLineEdit#Search {{
-        background-color: {SURFACE_ALT};
+        background-color: {BACKGROUND};
         border: 1px solid {BORDER};
-        border-radius: {RADIUS}px;
-        padding: 7px 12px;
-        selection-background-color: {PRIMARY};
+        border-radius: 18px;
+        padding: 8px 16px;
+        selection-background-color: {PRIMARY_DEEP};
     }}
-    QLineEdit#Search:focus {{ border: 1px solid {PRIMARY}; }}
+    QLineEdit#Search:focus {{ border: 1px solid {PRIMARY}; background-color: {SURFACE_ALT}; }}
 
     /* Sidebar */
-    QFrame#Sidebar {{
-        background-color: {SURFACE};
-        border: none;
-        border-right: 1px solid {BORDER};
-    }}
+    QFrame#Sidebar {{ background-color: {SURFACE}; border: none; border-right: 1px solid {BORDER}; }}
     QLabel#SidebarGroup {{
-        color: {TEXT_MUTED};
-        font-size: 11px;
-        font-weight: 700;
-        padding: 6px 14px 2px 14px;
+        color: {TEXT_MUTED}; font-size: 11px; font-weight: 700;
+        letter-spacing: 1px; padding: 10px 16px 4px 16px;
     }}
     QPushButton#NavItem {{
-        text-align: left;
-        border: none;
-        border-radius: {RADIUS}px;
-        padding: 8px 12px;
-        margin: 1px 8px;
-        color: {TEXT};
-        background: transparent;
+        text-align: left; border: none; border-radius: {RADIUS}px;
+        padding: 9px 12px 9px 14px; margin: 1px 8px; color: {TEXT_MUTED};
+        background: transparent; font-size: 14px;
     }}
-    QPushButton#NavItem:hover {{ background-color: {SURFACE_ALT}; }}
+    QPushButton#NavItem:hover {{ background-color: {SURFACE_ALT}; color: {TEXT}; }}
     QPushButton#NavItem:checked {{
-        background-color: {PRIMARY};
-        color: #ffffff;
-        font-weight: 600;
+        background-color: {SURFACE_ALT}; color: {TEXT};
+        border-left: 3px solid {PRIMARY}; padding-left: 11px; font-weight: 600;
     }}
 
-    /* Generic buttons */
+    /* Buttons */
     QPushButton {{
-        background-color: {SURFACE_ALT};
-        border: 1px solid {BORDER};
-        border-radius: {RADIUS}px;
-        padding: 7px 14px;
+        background-color: {SURFACE_ALT}; border: 1px solid {BORDER};
+        border-radius: {RADIUS}px; padding: 8px 16px; color: {TEXT};
     }}
     QPushButton:hover {{ border-color: {PRIMARY}; }}
-    QPushButton#Primary {{ background-color: {PRIMARY}; border: none; color: #fff; font-weight: 600; }}
+    QPushButton:pressed {{ background-color: {SURFACE}; }}
+    QPushButton#Primary {{ background-color: {PRIMARY_DEEP}; border: none; color: #ffffff; font-weight: 600; }}
+    QPushButton#Primary:hover {{ background-color: {PRIMARY}; }}
 
     /* Status bar */
-    QFrame#StatusBar {{
-        background-color: {SURFACE};
-        border: none;
-        border-top: 1px solid {BORDER};
+    QFrame#StatusBar {{ background-color: {SURFACE}; border: none; border-top: 1px solid {BORDER}; }}
+    QLabel#StatusItem {{ color: {TEXT_MUTED}; font-family: "Cascadia Code", "Consolas", "DejaVu Sans Mono", monospace; font-size: 12px; }}
+    QLabel#StatusAccent {{ color: {ACCENT}; font-family: "Cascadia Code", "Consolas", monospace; font-size: 12px; font-weight: 600; }}
+
+    /* Progress bar */
+    QProgressBar {{
+        background-color: {SURFACE_ALT}; border: none; border-radius: 5px;
+        height: 6px; text-align: center; color: transparent;
     }}
-    QLabel#StatusItem {{ color: {TEXT_MUTED}; font-family: "DejaVu Sans Mono", monospace; font-size: 12px; }}
+    QProgressBar::chunk {{ background-color: {PRIMARY}; border-radius: 5px; }}
 
     /* Photo grid */
-    QListView#PhotoGrid {{
-        background-color: {BACKGROUND};
-        border: none;
-    }}
+    QListView#PhotoGrid {{ background-color: {BACKGROUND}; border: none; padding: 8px; }}
     QListView#PhotoGrid::item {{ border-radius: {RADIUS}px; }}
     QListView#PhotoGrid::item:selected {{ background-color: {SURFACE_ALT}; }}
+    QListView#PhotoGrid::item:hover {{ background-color: {SURFACE}; }}
 
-    QScrollBar:vertical {{ background: transparent; width: 10px; margin: 0; }}
-    QScrollBar::handle:vertical {{ background: {BORDER}; border-radius: 5px; min-height: 30px; }}
+    /* Lists */
+    QListWidget {{ border: 1px solid {BORDER}; border-radius: {RADIUS}px; padding: 6px; }}
+    QListWidget::item {{ padding: 6px 8px; border-radius: 6px; }}
+    QListWidget::item:hover {{ background-color: {SURFACE_ALT}; }}
+
+    /* Scrollbars */
+    QScrollBar:vertical {{ background: transparent; width: 12px; margin: 2px; }}
+    QScrollBar::handle:vertical {{ background: {BORDER}; border-radius: 5px; min-height: 36px; }}
     QScrollBar::handle:vertical:hover {{ background: {TEXT_MUTED}; }}
-    QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; }}
+    QScrollBar:horizontal {{ background: transparent; height: 12px; margin: 2px; }}
+    QScrollBar::handle:horizontal {{ background: {BORDER}; border-radius: 5px; min-width: 36px; }}
+    QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
+    QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
     """

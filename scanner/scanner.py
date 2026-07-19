@@ -21,12 +21,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Callable, Iterator, Optional
 
 from config.settings import get_settings
 from database import db
 from scanner.metadata import extract_metadata
 from utils.logging_setup import get_logger
+
+# Called periodically with (items_seen, total). total == 0 means indeterminate
+# (the scanner streams the tree and does not know the count in advance).
+ProgressCallback = Callable[[int, int], None]
 
 logger = get_logger("scanner")
 
@@ -67,7 +71,11 @@ def iter_image_files(root: Path) -> Iterator[Path]:
             logger.warning("Cannot access %s: %s", path, exc)
 
 
-def scan_directory(root: Path, batch_size: Optional[int] = None) -> ScanSummary:
+def scan_directory(
+    root: Path,
+    batch_size: Optional[int] = None,
+    on_progress: Optional[ProgressCallback] = None,
+) -> ScanSummary:
     """Scan ``root`` recursively and store new photos, returning a summary.
 
     Args:
@@ -92,7 +100,11 @@ def scan_directory(root: Path, batch_size: Optional[int] = None) -> ScanSummary:
         conn.commit()  # persist the run start immediately for auditability.
 
         pending = 0
+        seen = 0
         for path in iter_image_files(root):
+            seen += 1
+            if on_progress is not None and seen % 25 == 0:
+                on_progress(seen, 0)  # total unknown -> indeterminate
             try:
                 if db.photo_path_exists(cur, str(path)):
                     # Already scanned in a previous run — nothing to do.

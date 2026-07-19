@@ -16,10 +16,6 @@ from viewer.flow_layout import FlowLayout
 from viewer.gallery import PhotoGrid, PhotoGridModel
 from viewer import theme
 
-# How many photo rows to load into a grid at once. Rows are light (ids + paths);
-# thumbnails load lazily. Paged/infinite loading is a future refinement.
-_GRID_PAGE = 100_000
-
 
 def _title(text: str) -> QtWidgets.QLabel:
     label = QtWidgets.QLabel(text)
@@ -89,14 +85,20 @@ class GalleryPage(QtWidgets.QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self._model = PhotoGridModel(tile=160)
+        self._model = PhotoGridModel()
         self._grid = PhotoGrid(self._model)
         self._grid.photo_activated.connect(self.photo_activated.emit)
         layout.addWidget(self._grid)
 
+        # Debounce search so a full reload doesn't run on every keystroke.
+        self._search_timer = QtCore.QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(250)
+        self._search_timer.timeout.connect(self._reload)
+
     def set_search(self, term: Optional[str]) -> None:
         self._search = term or None
-        self.refresh()
+        self._search_timer.start()
 
     def zoom(self, delta: int) -> None:
         self._grid.zoom(delta)
@@ -104,11 +106,17 @@ class GalleryPage(QtWidgets.QWidget):
     def current_photo_ids(self) -> list[int]:
         return self._model.photo_ids()
 
-    def refresh(self) -> None:
-        rows = data.photo_grid(
-            limit=_GRID_PAGE, person_id=self._person_id, search=self._search
+    def _reload(self) -> None:
+        person = self._person_id
+        search = self._search
+        self._model.set_fetcher(
+            lambda offset, limit: data.photo_grid(
+                limit=limit, offset=offset, person_id=person, search=search
+            )
         )
-        self._model.set_rows(rows)
+
+    def refresh(self) -> None:
+        self._reload()
 
 
 class PeoplePage(QtWidgets.QWidget):
@@ -177,7 +185,7 @@ class PersonDetailPage(QtWidgets.QWidget):
         header.addStretch(1)
         layout.addLayout(header)
 
-        self._model = PhotoGridModel(tile=160)
+        self._model = PhotoGridModel()
         self._grid = PhotoGrid(self._model)
         self._grid.photo_activated.connect(self.photo_activated.emit)
         layout.addWidget(self._grid, 1)
@@ -188,5 +196,8 @@ class PersonDetailPage(QtWidgets.QWidget):
     def show_person(self, person_id: int, name: Optional[str]) -> None:
         self._person_id = person_id
         self._name.setText(name or "Unknown")
-        rows = data.photo_grid(limit=_GRID_PAGE, person_id=person_id)
-        self._model.set_rows(rows)
+        self._model.set_fetcher(
+            lambda offset, limit: data.photo_grid(
+                limit=limit, offset=offset, person_id=person_id
+            )
+        )
