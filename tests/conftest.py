@@ -13,6 +13,10 @@ from PIL import Image
 # read. Overridable from the environment so CI can choose its own database.
 os.environ.setdefault("PHOTOSPHERE_DB_NAME", "photosphere_test")
 os.environ.setdefault("PHOTOSPHERE_DB_HOST", "127.0.0.1")
+# Pin clustering to DBSCAN in tests so results are deterministic regardless of
+# whether the optional `hdbscan` package is installed. (The clusterer's "auto"
+# path is still covered directly in test_clustering.py.)
+os.environ.setdefault("PHOTOSPHERE_CLUSTER_ALGORITHM", "dbscan")
 
 
 def _make_exif_image(path: Path) -> None:
