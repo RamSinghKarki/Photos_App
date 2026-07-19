@@ -81,11 +81,12 @@ candidate → filter → rank shape with no API change. See
 - ✅ **Faces** (person-name auto-filter)
 - ✅ **Favorites** + **recency** ranking
 - ✅ **OCR** text (RapidOCR, trigram-indexed, merged + boosted)
+- ✅ **Similar image** (CLIP nearest-neighbour; right-click → Find similar)
 - ⬜ **Objects** (YOLO/RT-DETR) → `photo_objects`, next
 
 ### Then per the recommended order
-Object detection → similar-image (nearest-neighbour over `clip_embeddings`) →
-duplicates → timeline → albums → map → video → backup/export → installer.
+Object detection → duplicates → timeline → albums → map → video →
+backup/export → installer.
 
 ### M6 — Timeline
 Google-Photos-style date browsing (Year → Month → Day) over the `taken_at` we

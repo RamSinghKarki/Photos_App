@@ -196,6 +196,7 @@ class PhotoGrid(QtWidgets.QListView):
 
     photo_activated = QtCore.Signal(int)
     detect_faces_requested = QtCore.Signal(list)  # selected photo ids
+    find_similar_requested = QtCore.Signal(int)   # one photo id
 
     def __init__(self, model: PhotoGridModel) -> None:
         super().__init__()
@@ -241,10 +242,13 @@ class PhotoGrid(QtWidgets.QListView):
         ids = self.selected_photo_ids()
         menu = QtWidgets.QMenu(self)
         if ids:
+            if len(ids) == 1:
+                similar = menu.addAction("Find similar photos")
+                similar.triggered.connect(lambda: self.find_similar_requested.emit(ids[0]))
             action = menu.addAction(f"Detect faces on {len(ids)} selected photo(s)")
             action.triggered.connect(lambda: self.detect_faces_requested.emit(ids))
         else:
-            hint = menu.addAction("Select photos, then right-click to detect faces")
+            hint = menu.addAction("Select photos, then right-click for actions")
             hint.setEnabled(False)
         menu.exec(event.globalPos())
 

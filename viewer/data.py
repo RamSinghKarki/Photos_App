@@ -43,6 +43,12 @@ def persons() -> list[dict[str, Any]]:
         return db.list_persons_with_cover(cur)
 
 
+def similar_photos(photo_id: int, limit: int = 100) -> list[tuple]:
+    """Photos visually similar to the given one (CLIP nearest neighbours)."""
+    with timer("query.similar"), db.connection() as conn, conn.cursor() as cur:
+        return db.find_similar_photos(cur, photo_id, limit)
+
+
 def recent_runs(limit: int = 5) -> list[dict[str, Any]]:
     """Recent scan runs for the dashboard activity feed."""
     with timer("query.recent_runs"), db.connection() as conn, conn.cursor() as cur:

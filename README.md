@@ -331,6 +331,9 @@ What works today:
   offline) so searching "passport", "invoice", a license plate, etc. finds
   document photos. OCR matches merge into the unified ranking. Needs
   `rapidocr-onnxruntime` (skipped if absent).
+- **Find similar** — right-click a photo → **Find similar photos** to see
+  visually related images (CLIP nearest-neighbour over stored embeddings; works
+  from the index alone, no model needed at query time).
 - **Resumes where you left off** — window size/position, the last page you were
   on, and the gallery zoom are remembered between launches (via native
   per-user settings), and the Import dialog reopens at your last folder.

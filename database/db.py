@@ -796,6 +796,37 @@ def search_candidates(
     ]
 
 
+def find_similar_photos(
+    cur: PgCursor, photo_id: int, limit: int = 100
+) -> list[tuple[int, str, Optional[str], Any]]:
+    """Return photos visually similar to ``photo_id`` (CLIP nearest neighbours).
+
+    Works purely from stored embeddings — no model needed at query time. Returns
+    (id, file_path, thumbnail_path, taken_at) ordered by similarity, excluding
+    the source photo. Empty if the photo has no CLIP embedding.
+    """
+    import numpy as np
+
+    cur.execute("SELECT embedding, model FROM clip_embeddings WHERE photo_id = %s", (photo_id,))
+    row = cur.fetchone()
+    if row is None:
+        return []
+    embedding, model = row
+    vec = embedding.to_numpy() if hasattr(embedding, "to_numpy") else np.asarray(embedding)
+    cur.execute(
+        """
+        SELECT p.id, p.file_path, p.thumbnail_path, p.taken_at
+          FROM clip_embeddings ce
+          JOIN photos p ON p.id = ce.photo_id
+         WHERE ce.model = %s AND ce.photo_id <> %s
+         ORDER BY ce.embedding <=> %s::vector
+         LIMIT %s
+        """,
+        (model, photo_id, vec.tolist(), limit),
+    )
+    return [(int(r[0]), r[1], r[2], r[3]) for r in cur.fetchall()]
+
+
 def set_favorite(cur: PgCursor, photo_id: int, favorite: bool) -> None:
     """Mark or unmark a photo as a favorite (a user signal used by ranking)."""
     cur.execute(

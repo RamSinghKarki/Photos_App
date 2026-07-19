@@ -88,6 +88,12 @@ class SearchPage(QtWidgets.QWidget):
     def current_photo_ids(self) -> list[int]:
         return self._model.photo_ids()
 
+    def show_rows(self, rows: list, status: str) -> None:
+        """Display an arbitrary result set (e.g. 'Find similar') in the grid."""
+        self._input.clear()
+        self._model.set_fetcher(lambda offset, limit: rows[offset:offset + limit])
+        self._status.setText(status)
+
     def _ensure_engine(self) -> bool:
         """Create the search engine on first use; return False if unavailable."""
         if self._engine_ready:

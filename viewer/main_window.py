@@ -82,10 +82,12 @@ class MainWindow(QtWidgets.QMainWindow):
             lambda pid: self._open_viewer(self._gallery.current_photo_ids(), pid)
         )
         self._gallery.detect_faces_requested.connect(self._on_detect_selected)
+        self._gallery.find_similar_requested.connect(self._on_find_similar)
         self._person_detail.photo_activated.connect(
             lambda pid: self._open_viewer(self._person_detail.current_photo_ids(), pid)
         )
         self._person_detail.detect_faces_requested.connect(self._on_detect_selected)
+        self._person_detail.find_similar_requested.connect(self._on_find_similar)
         self._person_detail.person_changed.connect(self.refresh_all)
         self._person_detail.open_person_requested.connect(self._open_person)
         self._people.person_selected.connect(self._open_person)
@@ -236,6 +238,15 @@ class MainWindow(QtWidgets.QMainWindow):
         """Run face detection + people grouping on user-selected photos only."""
         if photo_ids:
             self._start_pipeline(photo_ids=list(photo_ids))
+
+    def _on_find_similar(self, photo_id: int) -> None:
+        """Show photos visually similar to the given one on the Search tab."""
+        rows = data.similar_photos(photo_id, limit=200)
+        self._search.show_rows(
+            rows, f"{len(rows)} similar photo(s)" if rows
+            else "No similar photos — build the search index (Re-index) first."
+        )
+        self.show_page("search")
 
     def _start_pipeline(
         self, root: Optional[Path] = None, photo_ids: Optional[list[int]] = None

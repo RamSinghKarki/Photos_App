@@ -107,6 +107,35 @@ def test_search_engine_and_text_cache(clean_db, photo_tree: Path) -> None:
     assert backend.text_calls == calls_after_first
 
 
+def test_find_similar_photos(clean_db) -> None:
+    import datetime as _dt
+
+    def _photo(path: str) -> int:
+        meta = db.PhotoMetadata(file_path=path, file_hash="0" * 64, file_size=1,
+                                file_mtime=_dt.datetime(2021, 1, 1))
+        with db.connection() as conn, conn.cursor() as cur:
+            return db.insert_photo(cur, meta)
+
+    rng = np.random.default_rng(0)
+    base = rng.standard_normal(512).astype("float32")
+    base /= np.linalg.norm(base)
+    near = base + rng.standard_normal(512).astype("float32") * 0.01   # very similar
+    far = rng.standard_normal(512).astype("float32")
+
+    a, b, c = _photo("/a.jpg"), _photo("/b.jpg"), _photo("/c.jpg")
+    with db.connection() as conn, conn.cursor() as cur:
+        for pid, vec in ((a, base), (b, near), (c, far)):
+            v = vec / np.linalg.norm(vec)
+            db.upsert_clip_embedding(cur, pid, v.tolist(), "m", 1)
+
+    with db.connection() as conn, conn.cursor() as cur:
+        results = db.find_similar_photos(cur, a, limit=10)
+
+    ids = [r[0] for r in results]
+    assert a not in ids            # excludes itself
+    assert ids[0] == b             # the near-identical photo ranks first
+
+
 def test_favorite_filter(clean_db, photo_tree: Path) -> None:
     scan_directory(photo_tree)
     backend = StubBackend()
