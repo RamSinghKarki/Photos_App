@@ -36,6 +36,7 @@ from clustering.clusterer import (
     normalize_embeddings,
     person_centroid,
 )
+from clustering.context import PhotoContext, build_person_contexts, context_score
 from clustering.gallery import adaptive_threshold, select_representatives
 from clustering.quality import face_quality
 from config.settings import Settings, get_settings
@@ -199,6 +200,22 @@ def _match_vectors_by_person(
     return per_person
 
 
+def _load_contexts(cur, face_ids: list[int], settings: Settings):
+    """Return (per-person footprints, per-face photo context) for context fusion.
+
+    Empty when context fusion is disabled (`context_boost <= 0`), so the caller
+    applies no boost.
+    """
+    if settings.context_boost <= 0:
+        return {}, []
+    person_contexts = build_person_contexts(db.fetch_person_context_rows(cur))
+    photo_ctx = db.fetch_faces_photo_context(cur, face_ids)
+    face_contexts = [
+        PhotoContext.build(*photo_ctx.get(fid, (None, None, None))) for fid in face_ids
+    ]
+    return person_contexts, face_contexts
+
+
 def _assign_to_existing(cur, global_threshold: float, settings: Settings) -> int:
     """Auto-assign ungrouped faces to their best-matching known person; count them."""
     per_person = _match_vectors_by_person(cur, global_threshold)
@@ -211,6 +228,9 @@ def _assign_to_existing(cur, global_threshold: float, settings: Settings) -> int
 
     # Correction memory: a (face, person) the user rejected is never re-assigned.
     rejections = db.fetch_rejections(cur)
+
+    # Context fusion: capture day/place footprints, to boost near-threshold faces.
+    person_contexts, face_contexts = _load_contexts(cur, face_ids, settings)
 
     n = faces_norm.shape[0]
     best_score = np.full(n, -np.inf, dtype=np.float32)
@@ -226,6 +246,18 @@ def _assign_to_existing(cur, global_threshold: float, settings: Settings) -> int
         if rejected:
             blocked = np.array([fid in rejected for fid in face_ids])
             score = np.where(blocked, -np.inf, score)  # never rejoin this person
+
+        # Same day / same place lifts a near-miss (but can't invent a match).
+        person_ctx = person_contexts.get(person_id)
+        if person_ctx is not None:
+            eligible = score >= (info["thr"] - settings.context_reach)
+            if eligible.any():
+                cs = np.array(
+                    [context_score(face_contexts[i], person_ctx) for i in range(n)],
+                    dtype=np.float32,
+                )
+                score = score + settings.context_boost * cs * eligible
+
         better = (score >= info["thr"]) & (score > best_score)
         best_score = np.where(better, score, best_score)
         best_pid = np.where(better, person_id, best_pid)

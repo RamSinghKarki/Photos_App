@@ -172,6 +172,17 @@ class Settings:
     suggestion_margin: float = field(
         default_factory=lambda: float(_env_str("PHOTOSPHERE_SUGGESTION_MARGIN", "0.07"))
     )
+    # Context fusion: when a borderline face's photo shares capture context (same
+    # day, same place) with a person's known photos, add up to this much to its
+    # match score. Only faces already within `context_reach` below the threshold
+    # are eligible, so context lifts near-misses but never invents a match.
+    # Set the boost to 0 to disable context fusion.
+    context_boost: float = field(
+        default_factory=lambda: float(_env_str("PHOTOSPHERE_CONTEXT_BOOST", "0.06"))
+    )
+    context_reach: float = field(
+        default_factory=lambda: float(_env_str("PHOTOSPHERE_CONTEXT_REACH", "0.10"))
+    )
 
     # --- AI Search (CLIP) ---------------------------------------------------
     # open_clip model + pretrained tag. ViT-B-32/openai is a light 512-d model.

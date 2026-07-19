@@ -85,7 +85,12 @@ crops ("Learned appearances", best-quality first); right-click removes a bad one
 **Active learning** ✅ — a face just below a person's threshold becomes a pending
 "Is this \<name\>?" suggestion (`recognition_suggestions`) shown as a Yes/No strip
 on the person's page; Yes teaches the profile (records `confirm`), No records a
-`reject`. *Next:* context fusion (same day / event / GPS / companions).
+`reject`.
+
+**Context fusion** ✅ — a near-miss face taken the same day and place (GPS) as a
+person's known photos gets a small bounded boost that can lift it over the line
+(`clustering/context.py`); applies only to already-near-threshold faces, so it
+never invents a match. This completes the recognition vision end-to-end.
 
 ### Phase A — Stabilize v1.0 (in progress)
 - ✅ **Benchmarks** — `scripts/benchmark.py` + [BENCHMARKS.md](BENCHMARKS.md):

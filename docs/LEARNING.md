@@ -91,12 +91,29 @@ respects them.
   records a `reject` (never re-offered). Uncertain cases become training signal
   instead of silent misses, and the app only interrupts when it's genuinely on
   the fence. *(Stage 9)*
+- **Context fusion — where and when, not just the face.** When a face's match is
+  near-miss, its **capture context** breaks the tie: a face taken the same day
+  and at the same place (GPS) as a person's known photos gets a small, bounded
+  boost (`PHOTOSPHERE_CONTEXT_BOOST`, up to ~0.06) that can lift it over the line.
+  The boost applies **only** to faces already within `PHOTOSPHERE_CONTEXT_REACH`
+  of the threshold, so context strengthens a genuine near-match but never invents
+  one. Only strong, always-local signals are used (day + GPS); degenerate ones
+  like "same import folder" are deliberately excluded. (`clustering/context.py`.)
+  *(Stage 5)*
 
-### Deferred stages (next increments)
+The self-improving recognition vision is now complete end-to-end: represent
+(diverse gallery) → assess (quality) → match (best-of + adaptive threshold +
+context) → adapt (fold back in) → correct (rejections) → show (appearances) →
+ask (active learning). Models stay fixed and local; the knowledge grows.
 
-- **Stage 5 — Context fusion**: same day / event / camera / GPS / companions
-  raise confidence when the face signal alone is borderline (needs event/GPS
-  grouping first).
+### Future refinements
+
+- **Richer context**: co-occurring people ("seen with family") and event
+  clustering, on top of the day/GPS fusion already in place.
+- **Embedding versioning for faces**: as done for CLIP, to allow a face-model
+  upgrade (Buffalo_M, AdaFace, MagFace) without losing names.
+- **Personal classifier**: a lightweight per-library kNN/logistic head over
+  embeddings as an alternative to centroid+gallery matching.
 
 ## The knowledge base
 

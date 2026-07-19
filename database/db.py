@@ -675,6 +675,42 @@ def detach_faces(cur: PgCursor, face_ids: Sequence[int]) -> None:
     cur.execute("UPDATE faces SET person_id = NULL WHERE id = ANY(%s)", (list(face_ids),))
 
 
+def fetch_person_context_rows(
+    cur: PgCursor,
+) -> list[tuple[int, Any, Optional[float], Optional[float]]]:
+    """Return (person_id, taken_at, gps_lat, gps_lon) for grouped faces' photos.
+
+    Distinct per (person, photo) so a busy photo counts once; feeds context fusion.
+    """
+    cur.execute(
+        """
+        SELECT DISTINCT f.person_id, p.taken_at, p.gps_latitude, p.gps_longitude
+          FROM faces f
+          JOIN photos p ON p.id = f.photo_id
+         WHERE f.person_id IS NOT NULL
+        """
+    )
+    return [(int(r[0]), r[1], r[2], r[3]) for r in cur.fetchall()]
+
+
+def fetch_faces_photo_context(
+    cur: PgCursor, face_ids: Sequence[int]
+) -> dict[int, tuple[Any, Optional[float], Optional[float]]]:
+    """Return face_id -> (taken_at, gps_lat, gps_lon) for the given faces."""
+    if not face_ids:
+        return {}
+    cur.execute(
+        """
+        SELECT f.id, p.taken_at, p.gps_latitude, p.gps_longitude
+          FROM faces f
+          JOIN photos p ON p.id = f.photo_id
+         WHERE f.id = ANY(%s)
+        """,
+        (list(face_ids),),
+    )
+    return {int(r[0]): (r[1], r[2], r[3]) for r in cur.fetchall()}
+
+
 def record_suggestion(cur: PgCursor, face_id: int, person_id: int, score: float) -> None:
     """Record (or refresh) a borderline 'Is this <person>?' suggestion for a face."""
     cur.execute(

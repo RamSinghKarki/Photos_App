@@ -42,9 +42,14 @@ per-person thresholds, backfill, model-replaceability) lives in
 clustering/
   quality.py       # face_quality(det, size[, sharpness]) -> 0..1 (gates learning)
   gallery.py       # select_representatives + adaptive_threshold (pure numpy)
+  context.py       # capture day/GPS context fusion (boosts near-threshold faces)
   incremental.py   # update_people(): recognize vs galleries, then cluster the rest
   clusterer.py     # DBSCAN/HDBSCAN over embeddings (discovery of new people)
 ```
+
+The engine also **remembers corrections** (`recognition_feedback`: a rejected
+face is never re-assigned) and **asks when unsure** (`recognition_suggestions`:
+a borderline face becomes a "Is this <name>?" prompt). See [LEARNING.md](LEARNING.md).
 
 A new face is scored by its **best** cosine match across each person's
 representatives fused with their centroid, accepted when it clears that person's
