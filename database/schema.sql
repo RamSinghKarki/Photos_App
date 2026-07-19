@@ -128,6 +128,38 @@ END$$;
 -- reclustering everything. Added additively (ADD COLUMN IF NOT EXISTS).
 ALTER TABLE persons ADD COLUMN IF NOT EXISTS centroid vector(512);
 
+-- Per-person recognition threshold, derived from how *consistent* that person's
+-- representative embeddings are (see clustering/gallery.py). NULL means "use the
+-- global default" — a person needs a few representatives before it adapts.
+ALTER TABLE persons ADD COLUMN IF NOT EXISTS adaptive_threshold REAL;
+
+-- ---------------------------------------------------------------------------
+-- person_embeddings: a person's *representative gallery* — a diverse, quality-
+-- gated set of face embeddings, not a single average. Recognizing a person
+-- across viewpoint / facial hair / glasses / lighting / age works far better by
+-- matching a new face against this set (taking the best match) than against one
+-- centroid. The centroid on `persons` is kept as a fast secondary signal.
+--
+-- One row per contributing face (UNIQUE face_id). `quality` (0..1) gates whether
+-- a detection is trusted enough to teach; `is_representative` marks the diverse
+-- subset actually used for matching. Rows cascade away with their person or face.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS person_embeddings (
+    id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    person_id         BIGINT      NOT NULL REFERENCES persons (id) ON DELETE CASCADE,
+    face_id           BIGINT      NOT NULL REFERENCES faces (id) ON DELETE CASCADE,
+    embedding         vector(512) NOT NULL,       -- L2-normalized face embedding
+    quality           REAL        NOT NULL DEFAULT 0,  -- 0..1 quality score
+    is_representative BOOLEAN     NOT NULL DEFAULT FALSE,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (face_id)
+);
+CREATE INDEX IF NOT EXISTS idx_person_embeddings_person
+    ON person_embeddings (person_id);
+-- Partial index over just the active matching set (small, hot).
+CREATE INDEX IF NOT EXISTS idx_person_embeddings_repr
+    ON person_embeddings (person_id) WHERE is_representative;
+
 -- ---------------------------------------------------------------------------
 -- clip_embeddings: per-photo CLIP image embedding for semantic search.
 -- Versioned by model so a future model upgrade can tell which embeddings are

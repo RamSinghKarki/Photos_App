@@ -121,11 +121,35 @@ A group of faces believed to be the same individual (created by clustering).
 | `display_name` | text | user-assignable name (nullable; UI feature) |
 | `face_count` | integer | members in the group |
 | `cover_face_id` | bigint FK → faces | representative face (`ON DELETE SET NULL`) |
-| `centroid` | vector(512) | profile = running-average of the person's face embeddings; drives incremental recognition of new faces (see [LEARNING.md](LEARNING.md)) |
+| `centroid` | vector(512) | profile = running-average of the person's face embeddings; a fast secondary recognition signal |
+| `adaptive_threshold` | real | per-person acceptance bar from gallery consistency; NULL = use the global default (see [LEARNING.md](LEARNING.md)) |
 | `created_at`, `updated_at` | timestamptz | |
 
-Clustering is a full rebuild: `persons` is cleared (which nulls `faces.person_id`
-via the FK) and recreated each run.
+The default update (`update_people`) is **incremental and name-preserving**:
+existing people are kept, new faces fold in, and only genuinely new faces form
+new groups. A destructive rebuild (`recluster`, clearing `persons`) is opt-in.
+
+---
+
+## `person_embeddings`
+
+A person's **representative gallery** — a diverse, quality-gated set of face
+embeddings powering recognition across appearances (viewpoint, facial hair,
+glasses, lighting, age). Matching a new face against this set (best match) is far
+more robust than one centroid. See [LEARNING.md](LEARNING.md).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | bigint PK | identity |
+| `person_id` | bigint FK → persons | `ON DELETE CASCADE` |
+| `face_id` | bigint FK → faces | `ON DELETE CASCADE`; `UNIQUE` (one row per face) |
+| `embedding` | vector(512) | L2-normalized face embedding |
+| `quality` | real | 0..1 quality score gating whether it may teach |
+| `is_representative` | boolean | in the diverse subset actually used for matching |
+| `created_at` | timestamptz | |
+
+**Indexes:** `(person_id)` and a partial index over `WHERE is_representative`
+(the small, hot matching set). Rows cascade away with their person or face.
 
 ---
 
@@ -172,10 +196,14 @@ Grouped by area — this is the full public surface the rest of the app uses.
   `delete_faces_for_photo`, `reset_faces_processed`, `count_faces`,
   `count_photos_pending_faces`.
 - **Persons/clustering:** `fetch_face_vectors`, `fetch_ungrouped_face_vectors`,
-  `count_ungrouped_faces`, `clear_persons`, `create_person`,
-  `assign_faces_to_person`, `set_person_centroid`, `fetch_person_centroids`,
-  `update_person_profile`, `count_persons`, `list_persons_with_cover`,
-  `rename_person`, `delete_person`, `merge_persons`.
+  `fetch_ungrouped_faces`, `fetch_person_face_rows`, `count_ungrouped_faces`,
+  `clear_persons`, `create_person`, `assign_faces_to_person`,
+  `set_person_centroid`, `fetch_person_centroids`, `update_person_profile`,
+  `count_persons`, `list_persons_with_cover`, `rename_person`, `delete_person`,
+  `merge_persons`.
+- **Representative gallery (recognition v2):** `add_person_embedding`,
+  `fetch_person_gallery`, `set_person_representatives`, `set_adaptive_threshold`,
+  `fetch_person_representatives`, `clear_person_gallery`, `persons_missing_gallery`.
 - **Thumbnails:** `stream_photos_needing_thumbnail`, `set_thumbnail_path`,
   `count_photos_needing_thumbnail`.
 - **UI reads:** `library_stats`, `list_photo_grid`, `get_photo_detail`,

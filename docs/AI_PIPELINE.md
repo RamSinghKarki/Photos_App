@@ -28,6 +28,33 @@ by a `PluginManager` — see [PLUGINS.md](PLUGINS.md) for how to add one.
 
 ---
 
+## Face recognition subsystem (persons)
+
+Clustering turns embeddings into groups, but *recognition* is what keeps a person
+stable as new photos arrive. The engine keeps a **representative gallery** per
+person — a diverse, quality-gated set of embeddings — not just one centroid, so
+the same person is recognized across viewpoint, facial hair, glasses, lighting,
+and age. The full design (quality scoring, diverse-set curation, adaptive
+per-person thresholds, backfill, model-replaceability) lives in
+[LEARNING.md](LEARNING.md); the moving parts are:
+
+```
+clustering/
+  quality.py       # face_quality(det, size[, sharpness]) -> 0..1 (gates learning)
+  gallery.py       # select_representatives + adaptive_threshold (pure numpy)
+  incremental.py   # update_people(): recognize vs galleries, then cluster the rest
+  clusterer.py     # DBSCAN/HDBSCAN over embeddings (discovery of new people)
+```
+
+A new face is scored by its **best** cosine match across each person's
+representatives fused with their centroid, accepted when it clears that person's
+adaptive threshold, then folded into both the centroid and the gallery (which is
+re-curated). Names are preserved; a one-time backfill upgrades pre-gallery
+people. Stored in `person_embeddings` + `persons.{centroid,adaptive_threshold}`
+— see [DATABASE.md](DATABASE.md).
+
+---
+
 ## AI Search subsystem (CLIP)
 
 Modular by design: the engine depends on an **embedding backend interface**, not

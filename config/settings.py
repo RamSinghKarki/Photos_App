@@ -134,6 +134,39 @@ class Settings:
         default_factory=lambda: float(_env_str("PHOTOSPHERE_FACE_MATCH_THRESHOLD", "0.55"))
     )
 
+    # --- Recognition engine v2 (representative gallery) ---------------------
+    # Minimum face quality (0..1) to *store* an embedding in a person's gallery.
+    # Below this a detection is ignored — a blurry/tiny/low-confidence face must
+    # never teach a profile. See clustering/quality.py.
+    face_quality_store_min: float = field(
+        default_factory=lambda: float(_env_str("PHOTOSPHERE_FACE_QUALITY_STORE_MIN", "0.35"))
+    )
+    # Preferred minimum quality for a *representative* (the diverse matching set).
+    # Relaxed automatically if a person has too few good faces.
+    face_quality_learn_min: float = field(
+        default_factory=lambda: float(_env_str("PHOTOSPHERE_FACE_QUALITY_LEARN_MIN", "0.55"))
+    )
+    # Cap on representatives kept per person (a diverse set of appearances).
+    person_max_representatives: int = field(
+        default_factory=lambda: _env_int("PHOTOSPHERE_PERSON_MAX_REPRESENTATIVES", 12)
+    )
+    # Two representatives more similar than this are near-duplicates; keep only
+    # the higher-quality one so the gallery stays *diverse*, not redundant.
+    representative_diversity_sim: float = field(
+        default_factory=lambda: float(_env_str("PHOTOSPHERE_REPRESENTATIVE_DIVERSITY_SIM", "0.92"))
+    )
+    # Adaptive per-person threshold is clamped to this band around the global
+    # default; a person needs at least this many representatives before it adapts.
+    adaptive_threshold_min: float = field(
+        default_factory=lambda: float(_env_str("PHOTOSPHERE_ADAPTIVE_THRESHOLD_MIN", "0.45"))
+    )
+    adaptive_threshold_max: float = field(
+        default_factory=lambda: float(_env_str("PHOTOSPHERE_ADAPTIVE_THRESHOLD_MAX", "0.62"))
+    )
+    adaptive_threshold_min_reps: int = field(
+        default_factory=lambda: _env_int("PHOTOSPHERE_ADAPTIVE_THRESHOLD_MIN_REPS", 3)
+    )
+
     # --- AI Search (CLIP) ---------------------------------------------------
     # open_clip model + pretrained tag. ViT-B-32/openai is a light 512-d model.
     clip_model: str = field(default_factory=lambda: _env_str("PHOTOSPHERE_CLIP_MODEL", "ViT-B-32"))

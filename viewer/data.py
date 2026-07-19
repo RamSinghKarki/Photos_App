@@ -82,8 +82,12 @@ def delete_person(person_id: int) -> None:
 
 def merge_person_into(source_id: int, target_id: int) -> None:
     """Merge one person into another (faces move to the target)."""
+    from clustering.incremental import rebuild_person_gallery
+
     with db.connection() as conn, conn.cursor() as cur:
         db.merge_persons(cur, source_id, target_id)
+        # Re-curate the target's representative gallery over its new membership.
+        rebuild_person_gallery(cur, target_id)
 
 
 def set_favorite(photo_id: int, favorite: bool) -> None:

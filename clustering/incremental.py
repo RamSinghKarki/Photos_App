@@ -3,17 +3,23 @@
 Instead of wiping and rebuilding every person on each run (which would destroy
 the names the user assigned), this:
 
-  1. **Recognizes** — matches each *ungrouped* face against existing person
-     profiles (centroids). Above a confidence threshold it auto-assigns the face
-     to that person and folds it into the person's running-average profile. So
-     naming a cluster once teaches the app: future faces of that person are
-     recognized automatically, with no reclustering.
+  1. **Recognizes** — matches each *ungrouped* face against every known person's
+     **representative gallery** (a diverse, quality-gated set of embeddings), not
+     just a single average. Taking the *best* match across a person's front /
+     profile / bearded / bespectacled / low-light examples is what recognizes the
+     same person across appearances. A per-person **adaptive threshold** (derived
+     from how consistent that gallery is) decides acceptance. Accepted faces fold
+     into the person's centroid *and* their gallery, so naming a cluster once
+     teaches the app and every future photo of that person is auto-recognized.
   2. **Discovers** — clusters whatever faces remain ungrouped into *new* people,
-     appended alongside the existing ones (names untouched).
+     appended alongside the existing ones (names untouched), each seeded with its
+     own gallery.
 
-This is what makes recognition improve as the library grows, while keeping
-inference fast (existing people are never recomputed from scratch). A full
-destructive rebuild is still available via :func:`clustering.processor.recluster`.
+Recognition therefore improves as the library grows: the gallery accumulates
+more appearances and the threshold tightens or loosens to fit the person. See
+``clustering/quality.py`` (what is allowed to teach) and ``clustering/gallery.py``
+(how the diverse set and threshold are maintained). A full destructive rebuild is
+still available via :func:`clustering.processor.recluster`.
 """
 
 from __future__ import annotations
@@ -30,7 +36,9 @@ from clustering.clusterer import (
     normalize_embeddings,
     person_centroid,
 )
-from config.settings import get_settings
+from clustering.gallery import adaptive_threshold, select_representatives
+from clustering.quality import face_quality
+from config.settings import Settings, get_settings
 from database import db
 from utils.logging_setup import get_logger
 
@@ -56,54 +64,206 @@ class UpdateSummary:
         )
 
 
-def _assign_to_existing(cur, threshold: float) -> int:
-    """Auto-assign ungrouped faces to existing person centroids; return count."""
-    person_ids, counts, centroids = db.fetch_person_centroids(cur)
-    if not person_ids:
+# ---------------------------------------------------------------------------
+# Gallery maintenance
+# ---------------------------------------------------------------------------
+def _store_faces(
+    cur,
+    person_id: int,
+    face_ids: list[int],
+    det_scores: list[float],
+    sizes: list[tuple[int, int]],
+    embs_norm: "np.ndarray",
+    settings: Settings,
+    ensure_one: bool = True,
+) -> int:
+    """Add quality-passing faces to a person's gallery; return how many were added.
+
+    A face below ``face_quality_store_min`` is *not* trusted to teach. If nothing
+    clears the bar but ``ensure_one`` is set, the single best face is kept anyway
+    so the person always has at least one embedding to match against.
+    """
+    quals = [
+        face_quality(det_scores[i], sizes[i][0], sizes[i][1]) for i in range(len(face_ids))
+    ]
+    stored = 0
+    for i, face_id in enumerate(face_ids):
+        if quals[i] >= settings.face_quality_store_min:
+            db.add_person_embedding(cur, person_id, face_id, embs_norm[i].tolist(), quals[i])
+            stored += 1
+    if stored == 0 and ensure_one and face_ids:
+        best = int(np.argmax(quals))
+        db.add_person_embedding(
+            cur, person_id, face_ids[best], embs_norm[best].tolist(), quals[best]
+        )
+        stored = 1
+    return stored
+
+
+def _refresh_gallery(cur, person_id: int, settings: Settings) -> None:
+    """Recompute a person's representative subset and adaptive threshold."""
+    face_ids, quals, embs = db.fetch_person_gallery(cur, person_id)
+    if len(face_ids) == 0:
+        db.set_adaptive_threshold(cur, person_id, None)
+        return
+    embs_norm = normalize_embeddings(embs)
+    rep_idx = select_representatives(
+        embs_norm,
+        quals,
+        max_reps=settings.person_max_representatives,
+        diversity_sim=settings.representative_diversity_sim,
+        learn_min=settings.face_quality_learn_min,
+    )
+    db.set_person_representatives(cur, person_id, [face_ids[i] for i in rep_idx])
+    threshold = adaptive_threshold(
+        embs_norm[rep_idx],
+        global_threshold=settings.face_match_threshold,
+        lo=settings.adaptive_threshold_min,
+        hi=settings.adaptive_threshold_max,
+        min_reps=settings.adaptive_threshold_min_reps,
+    )
+    db.set_adaptive_threshold(cur, person_id, threshold)
+
+
+def rebuild_person_gallery(cur, person_id: int, settings: Optional[Settings] = None) -> None:
+    """Rebuild one person's gallery from scratch from their current faces.
+
+    Call after faces are reassigned outside the recognition loop (e.g. a merge),
+    so the representative set and adaptive threshold reflect the new membership.
+    """
+    settings = settings or get_settings()
+    face_ids, det_scores, sizes, embs = db.fetch_person_face_rows(cur, person_id)
+    db.clear_person_gallery(cur, person_id)
+    if not face_ids:
+        db.set_adaptive_threshold(cur, person_id, None)
+        return
+    embs_norm = normalize_embeddings(embs)
+    _store_faces(cur, person_id, face_ids, det_scores, sizes, embs_norm, settings)
+    _refresh_gallery(cur, person_id, settings)
+
+
+def _backfill_galleries(cur, settings: Settings) -> None:
+    """Seed galleries for people grouped before the gallery existed (one-time)."""
+    for person_id in db.persons_missing_gallery(cur):
+        face_ids, det_scores, sizes, embs = db.fetch_person_face_rows(cur, person_id)
+        if not face_ids:
+            continue
+        embs_norm = normalize_embeddings(embs)
+        _store_faces(cur, person_id, face_ids, det_scores, sizes, embs_norm, settings)
+        _refresh_gallery(cur, person_id, settings)
+
+
+# ---------------------------------------------------------------------------
+# Recognition (match ungrouped faces to known people)
+# ---------------------------------------------------------------------------
+def _match_vectors_by_person(
+    cur, global_threshold: float
+) -> dict[int, dict]:
+    """Build each person's match set: representatives + centroid, with a threshold.
+
+    Fusing the diverse representatives with the centroid means a new face is
+    accepted if it strongly matches *any* stored appearance or the average — the
+    multi-stage match (representative -> centroid) collapsed into one best-of.
+    """
+    per_person: dict[int, dict] = {}
+
+    for person_id, threshold, reps in db.fetch_person_representatives(cur):
+        per_person[person_id] = {
+            "vecs": normalize_embeddings(reps),
+            "thr": global_threshold if threshold is None else threshold,
+        }
+
+    person_ids, _counts, centroids = db.fetch_person_centroids(cur)
+    for idx, person_id in enumerate(person_ids):
+        centroid = normalize_embeddings(centroids[idx : idx + 1])  # (1, dim)
+        if person_id in per_person:
+            per_person[person_id]["vecs"] = np.vstack(
+                [per_person[person_id]["vecs"], centroid]
+            )
+        else:
+            per_person[person_id] = {"vecs": centroid, "thr": global_threshold}
+    return per_person
+
+
+def _assign_to_existing(cur, global_threshold: float, settings: Settings) -> int:
+    """Auto-assign ungrouped faces to their best-matching known person; count them."""
+    per_person = _match_vectors_by_person(cur, global_threshold)
+    if not per_person:
         return 0
-    face_ids, _scores, embeddings = db.fetch_ungrouped_face_vectors(cur)
+    face_ids, det_scores, sizes, embeddings = db.fetch_ungrouped_faces(cur)
     if not face_ids:
         return 0
-
     faces_norm = normalize_embeddings(embeddings)
-    cents_norm = normalize_embeddings(centroids)
-    sims = faces_norm @ cents_norm.T            # (N_faces, N_people) cosine sims
-    best_idx = sims.argmax(axis=1)
-    best_sim = sims[np.arange(sims.shape[0]), best_idx]
 
-    # Group accepted assignments by person.
+    n = faces_norm.shape[0]
+    best_score = np.full(n, -np.inf, dtype=np.float32)
+    best_pid = np.full(n, -1, dtype=np.int64)
+    for person_id, info in per_person.items():
+        sims = faces_norm @ info["vecs"].T          # (N_faces, k) cosine sims
+        score = sims.max(axis=1)                     # best appearance per face
+        better = (score >= info["thr"]) & (score > best_score)
+        best_score = np.where(better, score, best_score)
+        best_pid = np.where(better, person_id, best_pid)
+
     assigned: dict[int, list[int]] = defaultdict(list)
-    for row, (pidx, score) in enumerate(zip(best_idx, best_sim)):
-        if score >= threshold:
-            assigned[int(pidx)].append(row)
+    for row, person_id in enumerate(best_pid):
+        if person_id >= 0:
+            assigned[int(person_id)].append(row)
+    if not assigned:
+        return 0
+
+    # Old centroids/counts, to fold accepted faces into the running average.
+    cent_ids, cent_counts, cent_vecs = db.fetch_person_centroids(cur)
+    old = {
+        pid: (cent_counts[i], normalize_embeddings(cent_vecs[i : i + 1])[0])
+        for i, pid in enumerate(cent_ids)
+    }
 
     total = 0
-    for pidx, face_rows in assigned.items():
-        person_id = person_ids[pidx]
-        member_face_ids = [face_ids[r] for r in face_rows]
+    for person_id, rows in assigned.items():
+        member_face_ids = [face_ids[r] for r in rows]
         db.assign_faces_to_person(cur, person_id, member_face_ids)
 
-        # Fold the new faces into the person's running-average profile.
-        old_count = counts[pidx]
-        old_centroid = normalize_embeddings(centroids[pidx : pidx + 1])[0]
-        new_vectors = faces_norm[face_rows]
-        blended = old_centroid * old_count + new_vectors.sum(axis=0)
+        new_vectors = faces_norm[rows]
+        if person_id in old:
+            old_count, old_centroid = old[person_id]
+            blended = old_centroid * old_count + new_vectors.sum(axis=0)
+        else:  # representative-only person without a centroid (defensive)
+            old_count = 0
+            blended = new_vectors.sum(axis=0)
         norm = float(np.linalg.norm(blended))
         centroid = (blended / norm) if norm else blended
-        new_count = old_count + len(face_rows)
-        db.update_person_profile(cur, person_id, centroid.astype(np.float32).tolist(), new_count)
-        total += len(face_rows)
+        db.update_person_profile(
+            cur, person_id, centroid.astype(np.float32).tolist(), old_count + len(rows)
+        )
+
+        # Teach the gallery from the accepted faces, then re-curate it.
+        _store_faces(
+            cur,
+            person_id,
+            member_face_ids,
+            [det_scores[r] for r in rows],
+            [sizes[r] for r in rows],
+            new_vectors,
+            settings,
+            ensure_one=False,
+        )
+        _refresh_gallery(cur, person_id, settings)
+        total += len(rows)
 
     return total
 
 
-def _cluster_remaining(cur, eps: float, min_samples: int, algorithm: str) -> tuple[int, int, int]:
+def _cluster_remaining(
+    cur, eps: float, min_samples: int, algorithm: str, settings: Settings
+) -> tuple[int, int, int]:
     """Cluster still-ungrouped faces into NEW people. Returns (people, grouped, noise)."""
-    face_ids, det_scores, embeddings = db.fetch_ungrouped_face_vectors(cur)
+    face_ids, det_scores, sizes, embeddings = db.fetch_ungrouped_faces(cur)
     if len(face_ids) < max(2, min_samples):
         return 0, 0, len(face_ids)
 
     labels = cluster_faces(embeddings, eps=eps, min_samples=min_samples, algorithm=algorithm)
+    embs_norm = normalize_embeddings(embeddings)
     groups: dict[int, list[int]] = defaultdict(list)
     for index, label in enumerate(labels):
         groups[int(label)].append(index)
@@ -120,6 +280,19 @@ def _cluster_remaining(cur, eps: float, min_samples: int, algorithm: str) -> tup
         person_id = db.create_person(cur, face_count=len(member_ids), cover_face_id=cover)
         db.assign_faces_to_person(cur, person_id, member_ids)
         db.set_person_centroid(cur, person_id, person_centroid(embeddings[indices]))
+
+        # Seed the new person's representative gallery.
+        _store_faces(
+            cur,
+            person_id,
+            member_ids,
+            scores,
+            [sizes[i] for i in indices],
+            embs_norm[indices],
+            settings,
+        )
+        _refresh_gallery(cur, person_id, settings)
+
         people += 1
         grouped += len(member_ids)
     return people, grouped, noise
@@ -145,10 +318,13 @@ def update_people(
     summary = UpdateSummary()
 
     with db.connection() as conn, conn.cursor() as cur:
+        # Upgrade path: give pre-gallery people a gallery before matching.
+        _backfill_galleries(cur, settings)
+
         if db.count_ungrouped_faces(cur) == 0:
             return summary
-        summary.recognized = _assign_to_existing(cur, eff_thresh)
-        people, grouped, noise = _cluster_remaining(cur, eff_eps, eff_min, eff_algo)
+        summary.recognized = _assign_to_existing(cur, eff_thresh, settings)
+        people, grouped, noise = _cluster_remaining(cur, eff_eps, eff_min, eff_algo, settings)
         summary.new_people = people
         summary.grouped_new = grouped
         summary.still_ungrouped = noise

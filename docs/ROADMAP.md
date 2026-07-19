@@ -65,6 +65,16 @@ faces, people, CLIP, OCR are plugins run by a `PluginManager`. New capabilities
 (object detection, video, duplicates, new models) register one plugin and slot
 into Import/Re-index with no core changes. See [PLUGINS.md](PLUGINS.md).
 
+### Recognition engine v2 — persistent person identity ✅
+Recognition now keeps a **representative gallery** per person (a diverse,
+quality-gated embedding set) with **adaptive per-person thresholds**, instead of
+a single centroid — recognizing the same person across viewpoint, facial hair,
+glasses, lighting, and age. Quality scoring gates what may teach; accepted faces
+adapt the profile; names are preserved and pre-gallery people are backfilled.
+New tables/columns: `person_embeddings`, `persons.adaptive_threshold`. See
+[LEARNING.md](LEARNING.md). *Next:* context fusion, active learning, feedback
+memory, a per-person appearance gallery UI.
+
 ### Phase A — Stabilize v1.0 (in progress)
 - ✅ **Benchmarks** — `scripts/benchmark.py` + [BENCHMARKS.md](BENCHMARKS.md):
   all interactions < 50 ms up to 100k photos.

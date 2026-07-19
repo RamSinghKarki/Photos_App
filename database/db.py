@@ -397,6 +397,193 @@ def update_person_profile(
     )
 
 
+def _embeddings_to_matrix(rows: "list[Any]") -> "np.ndarray":
+    """Stack pgvector/list embeddings into an (N, dim) float32 matrix."""
+    import numpy as np
+
+    mats = []
+    for value in rows:
+        if hasattr(value, "to_numpy"):
+            mats.append(value.to_numpy().astype(np.float32))
+        else:
+            mats.append(np.asarray(value, dtype=np.float32))
+    return np.vstack(mats) if mats else np.empty((0, 0), np.float32)
+
+
+def fetch_ungrouped_faces(
+    cur: PgCursor,
+) -> tuple[list[int], list[float], list[tuple[int, int]], "np.ndarray"]:
+    """Return (face_ids, det_scores, sizes, embeddings) for faces with no person.
+
+    ``sizes`` is a list of (bbox_w, bbox_h) so the recognition engine can score
+    each face's quality (resolution) without a second query.
+    """
+    cur.execute(
+        "SELECT id, det_score, bbox_w, bbox_h, embedding "
+        "FROM faces WHERE person_id IS NULL ORDER BY id"
+    )
+    ids: list[int] = []
+    scores: list[float] = []
+    sizes: list[tuple[int, int]] = []
+    vectors: list[Any] = []
+    for face_id, det_score, bbox_w, bbox_h, embedding in cur.fetchall():
+        ids.append(int(face_id))
+        scores.append(float(det_score) if det_score is not None else 0.0)
+        sizes.append((int(bbox_w), int(bbox_h)))
+        vectors.append(embedding)
+    return ids, scores, sizes, _embeddings_to_matrix(vectors)
+
+
+def fetch_person_face_rows(
+    cur: PgCursor, person_id: int
+) -> tuple[list[int], list[float], list[tuple[int, int]], "np.ndarray"]:
+    """Like :func:`fetch_ungrouped_faces` but for one person's assigned faces.
+
+    Used to backfill a representative gallery for people grouped before the
+    gallery existed.
+    """
+    cur.execute(
+        "SELECT id, det_score, bbox_w, bbox_h, embedding "
+        "FROM faces WHERE person_id = %s ORDER BY id",
+        (person_id,),
+    )
+    ids: list[int] = []
+    scores: list[float] = []
+    sizes: list[tuple[int, int]] = []
+    vectors: list[Any] = []
+    for face_id, det_score, bbox_w, bbox_h, embedding in cur.fetchall():
+        ids.append(int(face_id))
+        scores.append(float(det_score) if det_score is not None else 0.0)
+        sizes.append((int(bbox_w), int(bbox_h)))
+        vectors.append(embedding)
+    return ids, scores, sizes, _embeddings_to_matrix(vectors)
+
+
+# ---------------------------------------------------------------------------
+# Representative gallery (recognition engine v2)
+# ---------------------------------------------------------------------------
+def add_person_embedding(
+    cur: PgCursor,
+    person_id: int,
+    face_id: int,
+    embedding: Sequence[float],
+    quality: float,
+    is_representative: bool = False,
+) -> None:
+    """Insert (or move) one face's embedding into a person's gallery.
+
+    Keyed by face_id: if the face is later reassigned (e.g. a merge), the row's
+    person_id and quality are updated rather than duplicated.
+    """
+    cur.execute(
+        """
+        INSERT INTO person_embeddings
+            (person_id, face_id, embedding, quality, is_representative)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (face_id) DO UPDATE SET
+            person_id = EXCLUDED.person_id,
+            embedding = EXCLUDED.embedding,
+            quality = EXCLUDED.quality
+        """,
+        (person_id, face_id, list(embedding), float(quality), is_representative),
+    )
+
+
+def fetch_person_gallery(
+    cur: PgCursor, person_id: int
+) -> tuple[list[int], "np.ndarray", "np.ndarray"]:
+    """Return (face_ids, qualities, embeddings) for one person's whole gallery."""
+    import numpy as np
+
+    cur.execute(
+        "SELECT face_id, quality, embedding FROM person_embeddings "
+        "WHERE person_id = %s ORDER BY face_id",
+        (person_id,),
+    )
+    ids: list[int] = []
+    quals: list[float] = []
+    vectors: list[Any] = []
+    for face_id, quality, embedding in cur.fetchall():
+        ids.append(int(face_id))
+        quals.append(float(quality))
+        vectors.append(embedding)
+    return ids, np.asarray(quals, dtype=np.float32), _embeddings_to_matrix(vectors)
+
+
+def set_person_representatives(
+    cur: PgCursor, person_id: int, representative_face_ids: Sequence[int]
+) -> None:
+    """Flag exactly ``representative_face_ids`` as representative for a person."""
+    reps = list(representative_face_ids)
+    cur.execute(
+        "UPDATE person_embeddings SET is_representative = (face_id = ANY(%s)) "
+        "WHERE person_id = %s",
+        (reps, person_id),
+    )
+
+
+def set_adaptive_threshold(
+    cur: PgCursor, person_id: int, threshold: Optional[float]
+) -> None:
+    """Store a person's adaptive threshold (NULL -> fall back to the global one)."""
+    cur.execute(
+        "UPDATE persons SET adaptive_threshold = %s, updated_at = now() WHERE id = %s",
+        (None if threshold is None else float(threshold), person_id),
+    )
+
+
+def fetch_person_representatives(
+    cur: PgCursor,
+) -> list[tuple[int, Optional[float], "np.ndarray"]]:
+    """Return (person_id, adaptive_threshold, representative_embeddings) per person.
+
+    Only people with at least one representative are returned — the primary
+    matching path for recognition.
+    """
+    import numpy as np
+
+    cur.execute(
+        """
+        SELECT pe.person_id, p.adaptive_threshold, pe.embedding
+          FROM person_embeddings pe
+          JOIN persons p ON p.id = pe.person_id
+         WHERE pe.is_representative
+         ORDER BY pe.person_id, pe.face_id
+        """
+    )
+    grouped: dict[int, list[Any]] = {}
+    thresholds: dict[int, Optional[float]] = {}
+    for person_id, threshold, embedding in cur.fetchall():
+        pid = int(person_id)
+        grouped.setdefault(pid, []).append(embedding)
+        thresholds[pid] = None if threshold is None else float(threshold)
+    return [
+        (pid, thresholds[pid], _embeddings_to_matrix(vectors))
+        for pid, vectors in grouped.items()
+    ]
+
+
+def clear_person_gallery(cur: PgCursor, person_id: int) -> None:
+    """Remove all gallery rows for a person (before a full rebuild, e.g. a merge)."""
+    cur.execute("DELETE FROM person_embeddings WHERE person_id = %s", (person_id,))
+
+
+def persons_missing_gallery(cur: PgCursor) -> list[int]:
+    """Person ids that have assigned faces but no gallery rows yet (backfill set)."""
+    cur.execute(
+        """
+        SELECT DISTINCT f.person_id
+          FROM faces f
+         WHERE f.person_id IS NOT NULL
+           AND NOT EXISTS (
+               SELECT 1 FROM person_embeddings pe WHERE pe.person_id = f.person_id
+           )
+        ORDER BY f.person_id
+        """
+    )
+    return [int(r[0]) for r in cur.fetchall()]
+
+
 def clear_persons(cur: PgCursor) -> None:
     """Remove every person row, detaching their faces.
 
