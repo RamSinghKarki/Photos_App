@@ -171,6 +171,25 @@ this into the recognition engine's blocklist each run.
 
 ---
 
+## `recognition_suggestions`
+
+Active learning: a face whose best match lands just below a person's threshold
+becomes a pending "Is this \<name\>?" question instead of being dropped.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | bigint PK | identity |
+| `face_id` | bigint FK → faces | `ON DELETE CASCADE`; `UNIQUE` (one suggestion per face) |
+| `person_id` | bigint FK → persons | `ON DELETE CASCADE` — the proposed person |
+| `score` | real | best cosine to that person |
+| `created_at` | timestamptz | |
+
+Cleared when the face is assigned (confirmed or clustered) or the user answers.
+`list_suggestions_for_person` returns only suggestions whose face is still
+ungrouped.
+
+---
+
 ## `clip_embeddings`
 
 Per-photo CLIP image embedding for semantic search, versioned by model.
@@ -225,6 +244,8 @@ Grouped by area — this is the full public surface the rest of the app uses.
 - **Feedback memory (recognition):** `record_feedback`, `fetch_rejections`,
   `unassign_person_faces_in_photos`, `recompute_person_profile`,
   `list_person_representatives_detail`, `detach_faces`.
+- **Active learning (suggestions):** `record_suggestion`, `delete_suggestion`,
+  `delete_grouped_suggestions`, `list_suggestions_for_person`, `count_suggestions`.
 - **Thumbnails:** `stream_photos_needing_thumbnail`, `set_thumbnail_path`,
   `count_photos_needing_thumbnail`.
 - **UI reads:** `library_stats`, `list_photo_grid`, `get_photo_detail`,

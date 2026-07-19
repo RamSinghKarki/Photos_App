@@ -180,6 +180,25 @@ CREATE INDEX IF NOT EXISTS idx_recognition_feedback_person
     ON recognition_feedback (person_id);
 
 -- ---------------------------------------------------------------------------
+-- recognition_suggestions: active learning. A face whose best match to a person
+-- lands just *below* that person's acceptance threshold is not auto-assigned,
+-- but instead of being silently dropped it is recorded here as a pending
+-- question ("Is this <name>?") for the user to confirm or reject. One row per
+-- face (its single best borderline candidate). Rows cascade away with the face
+-- or person, and are cleared once the face is assigned or the user answers.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS recognition_suggestions (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    face_id     BIGINT      NOT NULL REFERENCES faces (id)   ON DELETE CASCADE,
+    person_id   BIGINT      NOT NULL REFERENCES persons (id) ON DELETE CASCADE,
+    score       REAL        NOT NULL,          -- best cosine to the person
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (face_id)
+);
+CREATE INDEX IF NOT EXISTS idx_recognition_suggestions_person
+    ON recognition_suggestions (person_id);
+
+-- ---------------------------------------------------------------------------
 -- clip_embeddings: per-photo CLIP image embedding for semantic search.
 -- Versioned by model so a future model upgrade can tell which embeddings are
 -- stale (re-embedding upserts the row). One active model per photo.

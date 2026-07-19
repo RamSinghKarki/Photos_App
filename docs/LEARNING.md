@@ -83,15 +83,20 @@ respects them.
   rejection, so you can see *and* correct what the system learned.
   (`viewer/appearance_strip.py`, `data.person_representatives` /
   `reject_representative`.) *(Stage 12)*
+- **Active learning — ask only when unsure.** A face whose best match lands just
+  *below* a person's threshold (within `PHOTOSPHERE_SUGGESTION_MARGIN`) is not
+  dropped — it becomes a pending **"Is this <name>?"** suggestion
+  (`recognition_suggestions`), shown as a Yes/No strip on the person's page.
+  **Yes** assigns the face, teaches the gallery, and records a `confirm`; **No**
+  records a `reject` (never re-offered). Uncertain cases become training signal
+  instead of silent misses, and the app only interrupts when it's genuinely on
+  the fence. *(Stage 9)*
 
 ### Deferred stages (next increments)
 
 - **Stage 5 — Context fusion**: same day / event / camera / GPS / companions
   raise confidence when the face signal alone is borderline (needs event/GPS
   grouping first).
-- **Stage 9 — Active learning**: ask "Is this Ram?" only when confidence is
-  borderline; store the answer (the `recognition_feedback` `confirm` verdict is
-  reserved for exactly this).
 
 ## The knowledge base
 

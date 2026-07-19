@@ -135,3 +135,85 @@ class AppearanceStrip(QtWidgets.QWidget):
             thumb = _RepThumb(rep)
             thumb.rejected.connect(self.representative_rejected.emit)
             self._row_layout.insertWidget(self._row_layout.count() - 1, thumb)
+
+
+class _SuggestThumb(QtWidgets.QFrame):
+    """A suggested face with Yes / No buttons ('Is this <name>?')."""
+
+    confirmed = QtCore.Signal(int)  # face_id
+    rejected = QtCore.Signal(int)   # face_id
+
+    def __init__(self, suggestion: dict[str, Any]) -> None:
+        super().__init__()
+        self._face_id = int(suggestion["face_id"])
+        self.setToolTip(f"Best match {suggestion['score']:.2f}")
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(2)
+
+        image = QtWidgets.QLabel()
+        image.setPixmap(_rounded_square(suggestion.get("crop_path"), _THUMB))
+        image.setFixedSize(_THUMB, _THUMB)
+        layout.addWidget(image, 0, QtCore.Qt.AlignmentFlag.AlignHCenter)
+
+        buttons = QtWidgets.QHBoxLayout()
+        buttons.setSpacing(4)
+        yes = QtWidgets.QPushButton("✓")
+        yes.setFixedWidth(_THUMB // 2 - 2)
+        yes.setToolTip("Yes — this is them")
+        yes.clicked.connect(lambda: self.confirmed.emit(self._face_id))
+        no = QtWidgets.QPushButton("✗")
+        no.setFixedWidth(_THUMB // 2 - 2)
+        no.setToolTip("No — not them")
+        no.clicked.connect(lambda: self.rejected.emit(self._face_id))
+        buttons.addWidget(yes)
+        buttons.addWidget(no)
+        layout.addLayout(buttons)
+
+
+class SuggestionStrip(QtWidgets.QWidget):
+    """Active learning: borderline faces to confirm or reject for one person."""
+
+    confirmed = QtCore.Signal(int)  # face_id
+    rejected = QtCore.Signal(int)   # face_id
+
+    def __init__(self) -> None:
+        super().__init__()
+        outer = QtWidgets.QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(4)
+
+        self._heading = QtWidgets.QLabel("Suggested")
+        self._heading.setObjectName("H2")
+        outer.addWidget(self._heading)
+
+        self._scroll = QtWidgets.QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self._scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._scroll.setFixedHeight(_THUMB + 46)
+
+        self._row = QtWidgets.QWidget()
+        self._row_layout = QtWidgets.QHBoxLayout(self._row)
+        self._row_layout.setContentsMargins(0, 0, 0, 0)
+        self._row_layout.setSpacing(8)
+        self._row_layout.addStretch(1)
+        self._scroll.setWidget(self._row)
+        outer.addWidget(self._scroll)
+
+    def set_suggestions(self, suggestions: list[dict[str, Any]], name: str) -> None:
+        while self._row_layout.count() > 1:
+            item = self._row_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        self.setVisible(bool(suggestions))
+        who = name or "this person"
+        self._heading.setText(f"Suggested — is this {who}?  ({len(suggestions)})")
+        for suggestion in suggestions:
+            thumb = _SuggestThumb(suggestion)
+            thumb.confirmed.connect(self.confirmed.emit)
+            thumb.rejected.connect(self.rejected.emit)
+            self._row_layout.insertWidget(self._row_layout.count() - 1, thumb)

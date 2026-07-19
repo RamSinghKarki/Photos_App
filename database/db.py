@@ -675,6 +675,65 @@ def detach_faces(cur: PgCursor, face_ids: Sequence[int]) -> None:
     cur.execute("UPDATE faces SET person_id = NULL WHERE id = ANY(%s)", (list(face_ids),))
 
 
+def record_suggestion(cur: PgCursor, face_id: int, person_id: int, score: float) -> None:
+    """Record (or refresh) a borderline 'Is this <person>?' suggestion for a face."""
+    cur.execute(
+        """
+        INSERT INTO recognition_suggestions (face_id, person_id, score)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (face_id) DO UPDATE
+            SET person_id = EXCLUDED.person_id, score = EXCLUDED.score, created_at = now()
+        """,
+        (face_id, person_id, float(score)),
+    )
+
+
+def delete_suggestion(cur: PgCursor, face_id: int) -> None:
+    """Drop a face's pending suggestion (after it is answered or assigned)."""
+    cur.execute("DELETE FROM recognition_suggestions WHERE face_id = %s", (face_id,))
+
+
+def delete_grouped_suggestions(cur: PgCursor) -> None:
+    """Clear suggestions for faces that are no longer ungrouped (e.g. clustered)."""
+    cur.execute(
+        """
+        DELETE FROM recognition_suggestions rs
+         USING faces f
+         WHERE rs.face_id = f.id AND f.person_id IS NOT NULL
+        """
+    )
+
+
+def list_suggestions_for_person(cur: PgCursor, person_id: int) -> list[dict[str, Any]]:
+    """Pending suggestions proposing this person, best score first (ungrouped only)."""
+    cur.execute(
+        """
+        SELECT rs.face_id, f.crop_path, rs.score, f.photo_id
+          FROM recognition_suggestions rs
+          JOIN faces f ON f.id = rs.face_id
+         WHERE rs.person_id = %s AND f.person_id IS NULL
+         ORDER BY rs.score DESC, rs.face_id
+        """,
+        (person_id,),
+    )
+    return [
+        {"face_id": int(r[0]), "crop_path": r[1], "score": float(r[2]), "photo_id": int(r[3])}
+        for r in cur.fetchall()
+    ]
+
+
+def count_suggestions(cur: PgCursor) -> int:
+    """Total pending suggestions for still-ungrouped faces."""
+    cur.execute(
+        """
+        SELECT count(*) FROM recognition_suggestions rs
+          JOIN faces f ON f.id = rs.face_id
+         WHERE f.person_id IS NULL
+        """
+    )
+    return int(cur.fetchone()[0])
+
+
 def fetch_rejections(cur: PgCursor) -> dict[int, set[int]]:
     """Return person_id -> set(face_id) of rejected pairs (recognition blocklist)."""
     cur.execute(

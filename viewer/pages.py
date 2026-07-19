@@ -11,7 +11,7 @@ from typing import Optional
 from PySide6 import QtCore, QtWidgets
 
 from viewer import data
-from viewer.appearance_strip import AppearanceStrip
+from viewer.appearance_strip import AppearanceStrip, SuggestionStrip
 from viewer.components import StatCard, _human_bytes
 from viewer.gallery import PhotoGrid, PhotoGridModel
 from viewer.people_view import PeopleModel, PeopleView
@@ -204,6 +204,11 @@ class PersonDetailPage(QtWidgets.QWidget):
         self._grid.find_similar_requested.connect(self.find_similar_requested.emit)
         self._grid.remove_from_person_requested.connect(self._on_remove_from_person)
 
+        self._suggestions = SuggestionStrip()
+        self._suggestions.confirmed.connect(self._on_confirm_suggestion)
+        self._suggestions.rejected.connect(self._on_reject_suggestion)
+        layout.addWidget(self._suggestions)
+
         self._appearances = AppearanceStrip()
         self._appearances.representative_rejected.connect(self._on_reject_representative)
         layout.addWidget(self._appearances)
@@ -218,11 +223,32 @@ class PersonDetailPage(QtWidgets.QWidget):
         self._name.setText(name or "Unknown")
         self._grid.set_person_context(name or "")
         self._appearances.set_representatives(data.person_representatives(person_id))
+        self._suggestions.set_suggestions(
+            data.suggestions_for_person(person_id), name or "Unknown"
+        )
         self._model.set_fetcher(
             lambda offset, limit: data.photo_grid(
                 limit=limit, offset=offset, person_id=person_id
             )
         )
+
+    def _reload_person(self) -> None:
+        if self._person_id is not None:
+            who = self._name.text()
+            self.show_person(self._person_id, None if who == "Unknown" else who)
+
+    def _on_confirm_suggestion(self, face_id: int) -> None:
+        if self._person_id is None:
+            return
+        data.confirm_suggestion(face_id, self._person_id)
+        self.person_changed.emit()
+        self._reload_person()
+
+    def _on_reject_suggestion(self, face_id: int) -> None:
+        if self._person_id is None:
+            return
+        data.reject_suggestion(face_id, self._person_id)
+        self._reload_person()
 
     def _on_reject_representative(self, face_id: int) -> None:
         """User dropped one learned appearance from the person."""

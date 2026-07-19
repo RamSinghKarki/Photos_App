@@ -90,6 +90,33 @@ def merge_person_into(source_id: int, target_id: int) -> None:
         rebuild_person_gallery(cur, target_id)
 
 
+def suggestions_for_person(person_id: int) -> list[dict[str, Any]]:
+    """Pending 'Is this <person>?' suggestions (best score first)."""
+    with timer("query.suggestions"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_suggestions_for_person(cur, person_id)
+
+
+def suggestion_count() -> int:
+    """Total pending suggestions across all people (for a review badge)."""
+    with db.connection() as conn, conn.cursor() as cur:
+        return db.count_suggestions(cur)
+
+
+def confirm_suggestion(face_id: int, person_id: int) -> None:
+    """Accept a suggestion: assign the face, teach the profile, remember 'yes'."""
+    from clustering.incremental import confirm_face
+
+    with db.connection() as conn, conn.cursor() as cur:
+        confirm_face(cur, face_id, person_id)
+
+
+def reject_suggestion(face_id: int, person_id: int) -> None:
+    """Decline a suggestion: remember 'no' (face stays ungrouped, never re-offered)."""
+    with db.connection() as conn, conn.cursor() as cur:
+        db.record_feedback(cur, face_id, person_id, "reject")
+        db.delete_suggestion(cur, face_id)
+
+
 def person_representatives(person_id: int) -> list[dict[str, Any]]:
     """The person's learned representative faces (crop + quality + date)."""
     with timer("query.person_reps"), db.connection() as conn, conn.cursor() as cur:

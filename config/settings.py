@@ -166,6 +166,12 @@ class Settings:
     adaptive_threshold_min_reps: int = field(
         default_factory=lambda: _env_int("PHOTOSPHERE_ADAPTIVE_THRESHOLD_MIN_REPS", 3)
     )
+    # Active learning: a face whose best match falls within this margin *below* a
+    # person's acceptance threshold becomes a "Is this <name>?" suggestion rather
+    # than being dropped. Wider = more (but less certain) suggestions.
+    suggestion_margin: float = field(
+        default_factory=lambda: float(_env_str("PHOTOSPHERE_SUGGESTION_MARGIN", "0.07"))
+    )
 
     # --- AI Search (CLIP) ---------------------------------------------------
     # open_clip model + pretrained tag. ViT-B-32/openai is a light 512-d model.

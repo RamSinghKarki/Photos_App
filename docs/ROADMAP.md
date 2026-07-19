@@ -80,8 +80,12 @@ re-assigns a rejected (face, person) pair.
 
 **Appearance gallery UI** ✅ — a person's page shows the learned representative
 crops ("Learned appearances", best-quality first); right-click removes a bad one
-(recorded as a rejection). *Next:* context fusion, active learning (the `confirm`
-verdict is reserved).
+(recorded as a rejection).
+
+**Active learning** ✅ — a face just below a person's threshold becomes a pending
+"Is this \<name\>?" suggestion (`recognition_suggestions`) shown as a Yes/No strip
+on the person's page; Yes teaches the profile (records `confirm`), No records a
+`reject`. *Next:* context fusion (same day / event / GPS / companions).
 
 ### Phase A — Stabilize v1.0 (in progress)
 - ✅ **Benchmarks** — `scripts/benchmark.py` + [BENCHMARKS.md](BENCHMARKS.md):

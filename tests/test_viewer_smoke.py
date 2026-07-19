@@ -104,6 +104,34 @@ def test_appearance_strip_builds_and_signals(qapp) -> None:
     assert strip._row_layout.count() == 1
 
 
+def test_suggestion_strip_builds_and_signals(qapp) -> None:
+    """The suggestion strip renders a Yes/No thumb per suggestion and relays both."""
+    from viewer.appearance_strip import SuggestionStrip, _SuggestThumb
+
+    strip = SuggestionStrip()
+    yes: list[int] = []
+    no: list[int] = []
+    strip.confirmed.connect(yes.append)
+    strip.rejected.connect(no.append)
+
+    strip.set_suggestions(
+        [
+            {"face_id": 5, "crop_path": None, "score": 0.53, "photo_id": 1},
+            {"face_id": 6, "crop_path": None, "score": 0.49, "photo_id": 2},
+        ],
+        name="Ram",
+    )
+    thumbs = strip.findChildren(_SuggestThumb)
+    assert len(thumbs) == 2
+
+    thumbs[0].confirmed.emit(thumbs[0]._face_id)
+    thumbs[1].rejected.emit(thumbs[1]._face_id)
+    assert yes == [5] and no == [6]
+
+    strip.set_suggestions([], name="Ram")
+    assert strip._row_layout.count() == 1
+
+
 def test_photo_viewer_navigation(qapp, clean_db, photo_tree: Path) -> None:
     scan_directory(photo_tree)
     generate_thumbnails()

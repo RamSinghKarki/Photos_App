@@ -142,6 +142,20 @@ def rebuild_person_gallery(cur, person_id: int, settings: Optional[Settings] = N
     _refresh_gallery(cur, person_id, settings)
 
 
+def confirm_face(cur, face_id: int, person_id: int, settings: Optional[Settings] = None) -> None:
+    """Active learning: the user confirmed a suggested face IS this person.
+
+    Assigns the face, records a durable ``confirm``, teaches the gallery, and
+    clears the pending suggestion.
+    """
+    settings = settings or get_settings()
+    db.assign_faces_to_person(cur, person_id, [face_id])
+    db.record_feedback(cur, face_id, person_id, "confirm")
+    db.delete_suggestion(cur, face_id)
+    db.recompute_person_profile(cur, person_id)
+    rebuild_person_gallery(cur, person_id, settings)
+
+
 def _backfill_galleries(cur, settings: Settings) -> None:
     """Seed galleries for people grouped before the gallery existed (one-time)."""
     for person_id in db.persons_missing_gallery(cur):
@@ -201,6 +215,10 @@ def _assign_to_existing(cur, global_threshold: float, settings: Settings) -> int
     n = faces_norm.shape[0]
     best_score = np.full(n, -np.inf, dtype=np.float32)
     best_pid = np.full(n, -1, dtype=np.int64)
+    # Track the closest candidate by *margin to threshold* for active learning.
+    best_gap = np.full(n, -np.inf, dtype=np.float32)
+    sugg_pid = np.full(n, -1, dtype=np.int64)
+    sugg_score = np.zeros(n, dtype=np.float32)
     for person_id, info in per_person.items():
         sims = faces_norm @ info["vecs"].T          # (N_faces, k) cosine sims
         score = sims.max(axis=1)                     # best appearance per face
@@ -211,6 +229,21 @@ def _assign_to_existing(cur, global_threshold: float, settings: Settings) -> int
         better = (score >= info["thr"]) & (score > best_score)
         best_score = np.where(better, score, best_score)
         best_pid = np.where(better, person_id, best_pid)
+
+        gap = score - info["thr"]
+        closer = gap > best_gap
+        best_gap = np.where(closer, gap, best_gap)
+        sugg_pid = np.where(closer, person_id, sugg_pid)
+        sugg_score = np.where(closer, score, sugg_score)
+
+    # Active learning: a face we did NOT assign but whose best candidate is just
+    # below that person's bar becomes a pending "Is this <name>?" suggestion.
+    margin = settings.suggestion_margin
+    for row in range(n):
+        if best_pid[row] >= 0:
+            continue  # assigned outright
+        if -margin <= best_gap[row] < 0 and sugg_pid[row] >= 0:
+            db.record_suggestion(cur, face_ids[row], int(sugg_pid[row]), float(sugg_score[row]))
 
     assigned: dict[int, list[int]] = defaultdict(list)
     for row, person_id in enumerate(best_pid):
@@ -335,6 +368,8 @@ def update_people(
         summary.new_people = people
         summary.grouped_new = grouped
         summary.still_ungrouped = noise
+        # A suggestion is only valid while its face is still ungrouped.
+        db.delete_grouped_suggestions(cur)
 
     logger.info(
         "Incremental update: recognized %d, %d new people, %d still ungrouped",
