@@ -283,6 +283,11 @@ What works today:
   on 100k+ libraries. `+` / `-` zoom; double-click or Enter opens the viewer.
 - **People** — reflowing person cards with circular cover faces; click to see
   that person's photos.
+- **Manual face detection** — select one or more photos in the grid
+  (click, `Ctrl`/`Shift`-click, or `Ctrl+A`), **right-click → "Detect faces on
+  N selected"**, and it runs detection on just those photos and regroups people.
+  Re-running on a photo replaces its old faces. Works in the Photos grid and on
+  a person's photos.
 - **Photo viewer** — full-resolution image with a collapsible metadata panel
   (camera, date, dimensions, GPS, …); `←`/`→` navigate, `I` toggles the panel,
   `F11` full screen, `Esc` closes.

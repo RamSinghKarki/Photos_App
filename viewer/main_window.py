@@ -52,7 +52,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._state = AppState()
         self._current_page = "dashboard"
         self._worker: Optional[PipelineWorker] = None
-        self._last_root: Optional[Path] = None
+        self._last_job: tuple[Optional[Path], Optional[list[int]]] = (None, None)
 
         # --- Top bar ---
         self._topbar = TopBar()
@@ -76,9 +76,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self._gallery.photo_activated.connect(
             lambda pid: self._open_viewer(self._gallery.current_photo_ids(), pid)
         )
+        self._gallery.detect_faces_requested.connect(self._on_detect_selected)
         self._person_detail.photo_activated.connect(
             lambda pid: self._open_viewer(self._person_detail.current_photo_ids(), pid)
         )
+        self._person_detail.detect_faces_requested.connect(self._on_detect_selected)
         self._people.person_selected.connect(self._open_person)
         self._person_detail.back_requested.connect(lambda: self.show_page("people"))
 
@@ -215,14 +217,22 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_continue(self) -> None:
         # Resume: re-run the same target. Every stage is idempotent, so it
         # picks up exactly where Stop left off.
-        self._start_pipeline(self._last_root)
+        root, photo_ids = self._last_job
+        self._start_pipeline(root=root, photo_ids=photo_ids)
 
-    def _start_pipeline(self, root: Optional[Path]) -> None:
+    def _on_detect_selected(self, photo_ids: list[int]) -> None:
+        """Run face detection + people grouping on user-selected photos only."""
+        if photo_ids:
+            self._start_pipeline(photo_ids=list(photo_ids))
+
+    def _start_pipeline(
+        self, root: Optional[Path] = None, photo_ids: Optional[list[int]] = None
+    ) -> None:
         if self._worker is not None and self._worker.isRunning():
             return  # a pipeline is already running
-        self._last_root = root
+        self._last_job = (root, photo_ids)
         self._topbar.set_running()
-        self._worker = PipelineWorker(root=root, run_ai=True)
+        self._worker = PipelineWorker(root=root, run_ai=True, photo_ids=photo_ids)
         self._worker.step_changed.connect(self._status.set_step)
         self._worker.progress.connect(self._status.set_progress)
         self._worker.finished_ok.connect(self._on_pipeline_done)

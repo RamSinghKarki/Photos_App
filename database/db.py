@@ -259,6 +259,20 @@ def delete_faces_for_photo(cur: PgCursor, photo_id: int) -> None:
     cur.execute("DELETE FROM faces WHERE photo_id = %s", (photo_id,))
 
 
+def photos_by_ids(cur: PgCursor, photo_ids: Sequence[int]) -> list[tuple[int, str]]:
+    """Return (id, file_path) for the given photo ids, ordered by id.
+
+    Used for manual, user-selected face detection on specific photos.
+    """
+    if not photo_ids:
+        return []
+    cur.execute(
+        "SELECT id, file_path FROM photos WHERE id = ANY(%s) ORDER BY id",
+        (list(photo_ids),),
+    )
+    return [(int(r[0]), r[1]) for r in cur.fetchall()]
+
+
 def reset_faces_processed(cur: PgCursor) -> int:
     """Mark every photo as needing face processing again; return row count.
 

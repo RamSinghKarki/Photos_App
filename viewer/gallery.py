@@ -195,6 +195,7 @@ class PhotoGrid(QtWidgets.QListView):
     """Icon-mode grid view over a :class:`PhotoGridModel`."""
 
     photo_activated = QtCore.Signal(int)
+    detect_faces_requested = QtCore.Signal(list)  # selected photo ids
 
     def __init__(self, model: PhotoGridModel) -> None:
         super().__init__()
@@ -226,6 +227,26 @@ class PhotoGrid(QtWidgets.QListView):
 
     def zoom(self, delta: int) -> None:
         self.set_tile_size(self._model.tile_size() + delta)
+
+    def selected_photo_ids(self) -> list[int]:
+        """Return the photo ids of the currently selected tiles."""
+        ids: list[int] = []
+        for index in self.selectedIndexes():
+            photo_id = index.data(PHOTO_ID_ROLE)
+            if photo_id is not None:
+                ids.append(int(photo_id))
+        return ids
+
+    def contextMenuEvent(self, event: QtGui.QContextMenuEvent) -> None:  # noqa: N802
+        ids = self.selected_photo_ids()
+        menu = QtWidgets.QMenu(self)
+        if ids:
+            action = menu.addAction(f"Detect faces on {len(ids)} selected photo(s)")
+            action.triggered.connect(lambda: self.detect_faces_requested.emit(ids))
+        else:
+            hint = menu.addAction("Select photos, then right-click to detect faces")
+            hint.setEnabled(False)
+        menu.exec(event.globalPos())
 
     def _on_activated(self, index: QtCore.QModelIndex) -> None:
         photo_id = index.data(PHOTO_ID_ROLE)

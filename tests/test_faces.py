@@ -136,6 +136,41 @@ def test_streaming_survives_frequent_commits(clean_db, photo_tree: Path) -> None
         assert db.count_faces(cur) == READABLE
 
 
+def test_detect_faces_on_selected_photos_only(clean_db, photo_tree: Path) -> None:
+    _scan(photo_tree)
+    # Pick two specific real photos to process manually.
+    with db.connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id FROM photos WHERE file_path LIKE '%a.jpg' "
+            "OR file_path LIKE '%b.png' ORDER BY id"
+        )
+        chosen = [r[0] for r in cur.fetchall()]
+    assert len(chosen) == 2
+
+    summary = process_faces(StubDetector(1), photo_ids=chosen)
+
+    assert summary.photos == 2          # only the selected photos
+    assert summary.faces == 2
+    with db.connection() as conn, conn.cursor() as cur:
+        assert db.count_faces(cur) == 2
+        # Faces belong only to the chosen photos.
+        cur.execute("SELECT DISTINCT photo_id FROM faces ORDER BY photo_id")
+        assert [r[0] for r in cur.fetchall()] == chosen
+
+
+def test_selected_detection_replaces_existing_faces(clean_db, photo_tree: Path) -> None:
+    _scan(photo_tree)
+    with db.connection() as conn, conn.cursor() as cur:
+        cur.execute("SELECT id FROM photos WHERE file_path LIKE '%a.jpg'")
+        chosen = [cur.fetchone()[0]]
+
+    process_faces(StubDetector(1), photo_ids=chosen)
+    process_faces(StubDetector(3), photo_ids=chosen)  # re-run replaces, not appends
+
+    with db.connection() as conn, conn.cursor() as cur:
+        assert db.count_faces(cur) == 3  # 3 faces, not 1 + 3
+
+
 def test_one_bad_photo_does_not_abort_batch(clean_db, photo_tree: Path) -> None:
     _scan(photo_tree)
     # Delete one *real* image after scanning so its row points at a missing file.

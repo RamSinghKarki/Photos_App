@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, Sequence
 
 import numpy as np
 from PIL import Image, UnidentifiedImageError
@@ -112,6 +112,7 @@ def process_faces(
     reprocess: bool = False,
     limit: Optional[int] = None,
     batch_size: Optional[int] = None,
+    photo_ids: Optional[Sequence[int]] = None,
     on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> FaceSummary:
     """Run face detection over photos that need it.
@@ -122,6 +123,9 @@ def process_faces(
             per photo before re-detecting) instead of only unprocessed ones.
         limit: Maximum number of photos to process this run.
         batch_size: Photos per committed transaction (defaults to configured).
+        photo_ids: If given, process exactly these photos (a manual, user-picked
+            selection), replacing any existing faces on them — regardless of
+            whether they were processed before. Ignores ``reprocess``/``limit``.
         on_progress: Optional callback invoked with (done, total) as work runs.
 
     Returns:
@@ -131,6 +135,7 @@ def process_faces(
     settings.ensure_directories()
     effective_batch = batch_size or settings.scan_batch_size
     summary = FaceSummary()
+    selected = photo_ids is not None
 
     db.apply_schema()
 
@@ -142,24 +147,30 @@ def process_faces(
     try:
         cur = write_conn.cursor()
 
-        if reprocess:
+        if reprocess and not selected:
             reset = db.reset_faces_processed(cur)
             write_conn.commit()  # commit before streaming so the read sees it
             logger.info("Reprocess requested: %d photos re-queued for faces", reset)
 
-        with write_conn.cursor() as count_cur:
-            total = db.count_photos_pending_faces(count_cur)
-            if limit is not None:
-                total = min(total, limit)
+        if selected:
+            with read_conn.cursor() as sel_cur:
+                source = db.photos_by_ids(sel_cur, photo_ids)  # type: ignore[arg-type]
+            total = len(source)
+        else:
+            with write_conn.cursor() as count_cur:
+                total = db.count_photos_pending_faces(count_cur)
+                if limit is not None:
+                    total = min(total, limit)
+            source = db.stream_photos_pending_faces(read_conn, limit=limit)
 
         committed = 0
         done = 0
-        for photo_id, file_path in db.stream_photos_pending_faces(read_conn, limit=limit):
+        for photo_id, file_path in source:
             # A per-photo savepoint isolates failures: a bad image rolls back
             # only its own writes, never the rest of the uncommitted batch.
             cur.execute("SAVEPOINT photo_sp")
             try:
-                if reprocess:
+                if reprocess or selected:
                     db.delete_faces_for_photo(cur, photo_id)
 
                 found = _process_one_photo(cur, detector, photo_id, file_path)

@@ -75,6 +75,7 @@ class GalleryPage(QtWidgets.QWidget):
     """The photo grid. Emits :attr:`photo_activated` with a photo id."""
 
     photo_activated = QtCore.Signal(int)
+    detect_faces_requested = QtCore.Signal(list)
 
     def __init__(self, person_id: Optional[int] = None) -> None:
         super().__init__()
@@ -88,6 +89,7 @@ class GalleryPage(QtWidgets.QWidget):
         self._model = PhotoGridModel()
         self._grid = PhotoGrid(self._model)
         self._grid.photo_activated.connect(self.photo_activated.emit)
+        self._grid.detect_faces_requested.connect(self.detect_faces_requested.emit)
         layout.addWidget(self._grid)
 
         # Debounce search so a full reload doesn't run on every keystroke.
@@ -171,6 +173,7 @@ class PersonDetailPage(QtWidgets.QWidget):
 
     back_requested = QtCore.Signal()
     photo_activated = QtCore.Signal(int)
+    detect_faces_requested = QtCore.Signal(list)
 
     def __init__(self) -> None:
         super().__init__()
@@ -194,6 +197,7 @@ class PersonDetailPage(QtWidgets.QWidget):
         self._model = PhotoGridModel()
         self._grid = PhotoGrid(self._model)
         self._grid.photo_activated.connect(self.photo_activated.emit)
+        self._grid.detect_faces_requested.connect(self.detect_faces_requested.emit)
         layout.addWidget(self._grid, 1)
 
     def current_photo_ids(self) -> list[int]:

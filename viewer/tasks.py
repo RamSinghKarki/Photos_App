@@ -64,11 +64,13 @@ class PipelineWorker(QtCore.QThread):
         self,
         root: Optional[Path] = None,
         run_ai: bool = True,
+        photo_ids: Optional[list[int]] = None,
         detector_factory: Optional[DetectorFactory] = None,
     ) -> None:
         super().__init__()
         self._root = root
         self._run_ai = run_ai
+        self._photo_ids = photo_ids
         self._detector_factory = detector_factory or _default_detector
         self._cancelled = False
 
@@ -79,6 +81,26 @@ class PipelineWorker(QtCore.QThread):
     def run(self) -> None:  # noqa: D401 - QThread entry point
         try:
             parts: list[str] = []
+
+            # Manual selection: detect faces on exactly the chosen photos, then
+            # regroup people. No scan / thumbnail stages.
+            if self._photo_ids is not None:
+                detector = self._detector_factory()
+                if detector is None:
+                    self.failed.emit("Face model not installed (insightface).")
+                    return
+                self.step_changed.emit("Detecting faces")
+                faces = process_faces(
+                    detector, photo_ids=self._photo_ids, on_progress=self._on_progress
+                )
+                self.step_changed.emit("Grouping people")
+                clusters = recluster()
+                self.step_changed.emit("Done")
+                self.finished_ok.emit(
+                    f"+{faces.faces} faces on {len(self._photo_ids)} photos  ·  "
+                    f"{clusters.persons} people"
+                )
+                return
 
             if self._root is not None:
                 self.step_changed.emit("Scanning")
