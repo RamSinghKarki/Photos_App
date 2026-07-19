@@ -81,7 +81,22 @@ The tab now switches instantly and stays flat as the library grows.
 | Gallery scroll | ~60 FPS | ✅ virtualized + async |
 | Thumbnail fetch (cached) | < 20 ms | ✅ async, LRU-cached |
 | Structured DB search | < 100 ms | ✅ ~20 ms at 3k photos |
-| Launch (100k photos) | < 3 s | to be measured at scale |
+| Launch (100k photos) | < 3 s | ✅ **0.23 s** (measured at 100k) |
+
+### Scale test (100,000 photos, 3k faces, 500 people)
+
+| Operation | Time |
+|-----------|-----:|
+| App launch (window construct + dashboard) | 0.23 s |
+| Photos tab (first page) | 38 ms |
+| People tab | 22 ms |
+| Dashboard tab | 59 ms |
+| `library_stats` query | 41–48 ms |
+
+Everything stays well inside target at 100k; no new bottleneck surfaced. (If a
+500k library later makes the gallery's `ORDER BY taken_at DESC, id DESC` sort
+slow, a composite `(taken_at DESC, id DESC)` index is the ready fix — not needed
+at 100k.)
 
 ## Method (the order that worked)
 
