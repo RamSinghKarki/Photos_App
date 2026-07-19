@@ -49,6 +49,36 @@ def test_main_window_builds_and_navigates(qapp, clean_db, photo_tree: Path) -> N
         window.close()
 
 
+def test_drop_filters_folders_from_files(qapp, photo_tree: Path) -> None:
+    """A folder drop is accepted (dirs only); loose files/URLs are ignored."""
+    from PySide6 import QtCore
+    from viewer.main_window import MainWindow
+
+    class _Evt:
+        def __init__(self, mime):
+            self._mime = mime
+
+        def mimeData(self):
+            return self._mime
+
+    a_file = photo_tree / "with_exif.jpg"
+
+    mixed = QtCore.QMimeData()
+    mixed.setUrls([
+        QtCore.QUrl.fromLocalFile(str(photo_tree)),  # a directory -> kept
+        QtCore.QUrl.fromLocalFile(str(a_file)),       # a file -> dropped
+    ])
+    dirs = MainWindow._dropped_dirs(_Evt(mixed))
+    assert dirs == [photo_tree]
+
+    files_only = QtCore.QMimeData()
+    files_only.setUrls([QtCore.QUrl.fromLocalFile(str(a_file))])
+    assert MainWindow._dropped_dirs(_Evt(files_only)) == []
+
+    no_urls = QtCore.QMimeData()
+    assert MainWindow._dropped_dirs(_Evt(no_urls)) == []
+
+
 def test_photo_viewer_navigation(qapp, clean_db, photo_tree: Path) -> None:
     scan_directory(photo_tree)
     generate_thumbnails()

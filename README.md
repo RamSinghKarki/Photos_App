@@ -3,8 +3,9 @@
 A fully **offline**, AI-powered photo management application for Windows. All
 data and all inference stay on the local machine — no cloud, no APIs.
 
-Face recognition is Version 1; the foundation is built so Timeline, Albums,
-Search, OCR, and more can be added without redesigning the schema.
+Face recognition, AI Search (CLIP + OCR), and a chronological Timeline are
+built; the foundation makes Albums, duplicate detection, object detection, and
+more addable without redesigning the schema.
 
 ## Documentation
 
@@ -351,9 +352,14 @@ PyTorch if present, otherwise the onnxruntime CUDA provider. If it shows
 "CPU only" but you have an NVIDIA GPU, install `onnxruntime-gpu` (not the CPU
 `onnxruntime`).
 
-Sidebar sections tied to not-yet-built backend modules (Timeline, Videos,
-Search, Objects, Similar, Albums, Favorites, Archive, Trash, Settings) show an
-honest "planned" page rather than faking functionality.
+Sidebar sections tied to not-yet-built backend modules (Videos, Objects,
+Albums, Favorites, Archive, Trash, Settings) show an honest "planned" page
+rather than faking functionality.
+
+**Timeline** browses your library chronologically — a Year → Month tree (with
+per-month counts) beside the same virtualized grid the Photos tab uses,
+defaulting to the most recent month. **Drag-and-drop import**: drop a folder
+anywhere on the window to import it (same as **Import**, Ctrl+O).
 
 ### How to verify correctness
 

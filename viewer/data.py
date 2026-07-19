@@ -49,6 +49,18 @@ def similar_photos(photo_id: int, limit: int = 100) -> list[tuple]:
         return db.find_similar_photos(cur, photo_id, limit)
 
 
+def timeline_buckets() -> list[tuple[int, int, int]]:
+    """(year, month, count) buckets for the Timeline, newest first."""
+    with timer("query.timeline_buckets"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_timeline_buckets(cur)
+
+
+def photos_by_month(year: int, month: int, limit: int, offset: int = 0) -> list[tuple]:
+    """A page of photos captured in a given month, newest first."""
+    with timer("query.photos_by_month"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_photos_by_month(cur, year, month, limit, offset)
+
+
 def recent_runs(limit: int = 5) -> list[dict[str, Any]]:
     """Recent scan runs for the dashboard activity feed."""
     with timer("query.recent_runs"), db.connection() as conn, conn.cursor() as cur:

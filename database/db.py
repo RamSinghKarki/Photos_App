@@ -623,6 +623,40 @@ def list_photo_grid(
     return [(int(r[0]), r[1], r[2], r[3]) for r in cur.fetchall()]
 
 
+def list_timeline_buckets(cur: PgCursor) -> list[tuple[int, int, int]]:
+    """Return (year, month, count) buckets for dated photos, newest first."""
+    cur.execute(
+        """
+        SELECT EXTRACT(YEAR FROM taken_at)::int AS y,
+               EXTRACT(MONTH FROM taken_at)::int AS m,
+               count(*)
+          FROM photos
+         WHERE taken_at IS NOT NULL
+         GROUP BY y, m
+         ORDER BY y DESC, m DESC
+        """
+    )
+    return [(int(r[0]), int(r[1]), int(r[2])) for r in cur.fetchall()]
+
+
+def list_photos_by_month(
+    cur: PgCursor, year: int, month: int, limit: int, offset: int = 0
+) -> list[tuple[int, str, Optional[str], Any]]:
+    """Return (id, file_path, thumbnail_path, taken_at) for one month, newest first."""
+    cur.execute(
+        """
+        SELECT id, file_path, thumbnail_path, taken_at
+          FROM photos
+         WHERE taken_at >= make_date(%s, %s, 1)
+           AND taken_at <  (make_date(%s, %s, 1) + interval '1 month')
+         ORDER BY taken_at DESC, id DESC
+         LIMIT %s OFFSET %s
+        """,
+        (year, month, year, month, limit, offset),
+    )
+    return [(int(r[0]), r[1], r[2], r[3]) for r in cur.fetchall()]
+
+
 def get_photo_detail(cur: PgCursor, photo_id: int) -> Optional[dict[str, Any]]:
     """Return a photo's full metadata for the viewer panel, or None."""
     cur.execute(

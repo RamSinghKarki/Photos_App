@@ -24,12 +24,12 @@ from viewer.photo_viewer import PhotoViewer
 from viewer.search_page import SearchPage
 from viewer.state import AppState
 from viewer.tasks import PipelineWorker
+from viewer.timeline_page import TimelinePage
 
 logger = get_logger("viewer.main")
 
 # Honest notes for sections whose backend module is not built yet.
 _PLANNED_NOTES = {
-    "timeline": "Timeline — planned. Will group photos by year and month.",
     "videos": "Videos — planned. Video indexing is a future module.",
     "objects": "Object Detection — planned AI module.",
     "similar": "Similar Photos — planned AI module.",
@@ -74,9 +74,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self._people = PeoplePage()
         self._person_detail = PersonDetailPage()
         self._search = SearchPage()
+        self._timeline = TimelinePage()
 
         self._search.photo_activated.connect(
             lambda pid: self._open_viewer(self._search.current_photo_ids(), pid)
+        )
+        self._timeline.photo_activated.connect(
+            lambda pid: self._open_viewer(self._timeline.current_photo_ids(), pid)
         )
         self._gallery.photo_activated.connect(
             lambda pid: self._open_viewer(self._gallery.current_photo_ids(), pid)
@@ -99,6 +103,7 @@ class MainWindow(QtWidgets.QMainWindow):
             ("photos", self._gallery),
             ("people", self._people),
             ("search", self._search),
+            ("timeline", self._timeline),
         ):
             self._page_keys[key] = self._stack.addWidget(widget)
         self._detail_index = self._stack.addWidget(self._person_detail)
@@ -127,6 +132,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._install_shortcuts()
         self._status.set_gpu(detect_gpu().badge())
+        self.setAcceptDrops(True)  # drop a folder anywhere to import it
         self._restore_state()
         self.refresh_all()
 
@@ -178,6 +184,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._gallery.refresh()
                 elif key == "people":
                     self._people.refresh()
+                elif key == "timeline":
+                    self._timeline.refresh()
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not refresh page '%s': %s", key, exc)
 
@@ -210,6 +218,38 @@ class MainWindow(QtWidgets.QMainWindow):
         self._sidebar.select("photos")
         self._stack.setCurrentIndex(self._page_keys["photos"])
         self._gallery.set_search(term)
+
+    # -- drag & drop ---------------------------------------------------------
+    @staticmethod
+    def _dropped_dirs(event: QtGui.QDropEvent) -> list[Path]:
+        """Local directories among a drop's URLs (files are ignored)."""
+        mime = event.mimeData()
+        if not mime.hasUrls():
+            return []
+        dirs = []
+        for url in mime.urls():
+            if url.isLocalFile():
+                path = Path(url.toLocalFile())
+                if path.is_dir():
+                    dirs.append(path)
+        return dirs
+
+    def dragEnterEvent(self, event: QtGui.QDragEnterEvent) -> None:  # noqa: N802 (Qt name)
+        if self._dropped_dirs(event):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event: QtGui.QDropEvent) -> None:  # noqa: N802 (Qt name)
+        dirs = self._dropped_dirs(event)
+        if not dirs:
+            event.ignore()
+            return
+        event.acceptProposedAction()
+        # Import the first dropped folder; remember it for the next dialog.
+        folder = dirs[0]
+        self._state.save_import_dir(str(folder))
+        self._start_pipeline(folder)
 
     # -- pipeline ------------------------------------------------------------
     def _on_import(self) -> None:

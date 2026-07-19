@@ -51,7 +51,7 @@ SIDEBAR_SECTIONS: list[tuple[str, list[tuple[str, str]]]] = [
 ]
 
 # Page keys fully implemented here; everything else renders a "planned" page.
-IMPLEMENTED_PAGES = {"dashboard", "photos", "people", "search"}
+IMPLEMENTED_PAGES = {"dashboard", "photos", "people", "search", "timeline"}
 
 
 def build_stylesheet() -> str:

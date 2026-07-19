@@ -71,8 +71,12 @@ into Import/Re-index with no core changes. See [PLUGINS.md](PLUGINS.md).
 - ✅ **Robustness tests** — missing thumbnails, AI model/GPU unavailable, DB
   unreachable at launch (`tests/test_robustness.py`); corrupt/deleted images and
   interrupted work covered by existing suites.
-- ⬜ **UI polish** — skeleton loading, transitions, drag-and-drop, richer context
-  menus, notifications, search suggestions.
+- ✅ **Timeline view** — Year → Month browsing over `taken_at`, virtualized
+  grid (`viewer/timeline_page.py`, `db.list_timeline_buckets` /
+  `list_photos_by_month`).
+- ✅ **Drag-and-drop import** — drop a folder anywhere on the window to import it.
+- ⬜ **UI polish** — skeleton loading, transitions, richer context menus,
+  notifications, search suggestions.
 
 ### Phase B — Unified AI Search platform ✅
 The search engine now ranks across signals: CLIP similarity blended with
@@ -94,10 +98,12 @@ candidate → filter → rank shape with no API change. See
 Object detection → duplicates → timeline → albums → map → video →
 backup/export → installer.
 
-### M6 — Timeline
-Google-Photos-style date browsing (Year → Month → Day) over the `taken_at` we
-already store. Sticky date headers, jump-to-date scrollbar. Low risk, high
-visibility. *New:* `timeline/` query helpers + a `TimelinePage`.
+### M6 — Timeline ✅
+Google-Photos-style date browsing over the `taken_at` we already store. Shipped
+as a Year → Month tree (with per-month counts) beside the same virtualized,
+async grid the Photos tab uses; defaults to the most recent month. Undated
+photos are simply absent (nothing to place them on). *Built:*
+`db.list_timeline_buckets` / `list_photos_by_month`, `viewer/timeline_page.py`.
 
 ### M6 — Duplicate detection
 Three-tier: exact (SHA-256, already stored) → **perceptual hash** (resized/
