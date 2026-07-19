@@ -584,6 +584,72 @@ def persons_missing_gallery(cur: PgCursor) -> list[int]:
     return [int(r[0]) for r in cur.fetchall()]
 
 
+def recompute_person_profile(cur: PgCursor, person_id: int) -> int:
+    """Recompute a person's centroid + face_count from their current faces.
+
+    Returns the new face count (0 if the person has no faces left).
+    """
+    import numpy as np
+
+    _ids, _scores, embeddings = _face_vectors_for_person(cur, person_id)
+    count = int(embeddings.shape[0])
+    if count:
+        centroid = embeddings.mean(axis=0)
+        norm = float(np.linalg.norm(centroid))
+        centroid = (centroid / norm) if norm else centroid
+        cur.execute(
+            "UPDATE persons SET face_count = %s, centroid = %s, updated_at = now() WHERE id = %s",
+            (count, centroid.tolist(), person_id),
+        )
+    else:
+        cur.execute(
+            "UPDATE persons SET face_count = 0, updated_at = now() WHERE id = %s",
+            (person_id,),
+        )
+    return count
+
+
+def unassign_person_faces_in_photos(
+    cur: PgCursor, person_id: int, photo_ids: Sequence[int]
+) -> list[int]:
+    """Detach a person's faces that lie in the given photos; return their ids."""
+    cur.execute(
+        "UPDATE faces SET person_id = NULL "
+        "WHERE person_id = %s AND photo_id = ANY(%s) RETURNING id",
+        (person_id, list(photo_ids)),
+    )
+    return [int(r[0]) for r in cur.fetchall()]
+
+
+# ---------------------------------------------------------------------------
+# Recognition feedback (correction memory)
+# ---------------------------------------------------------------------------
+def record_feedback(
+    cur: PgCursor, face_id: int, person_id: int, verdict: str = "reject"
+) -> None:
+    """Record that a face was rejected from (or confirmed for) a person."""
+    cur.execute(
+        """
+        INSERT INTO recognition_feedback (face_id, person_id, verdict)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (face_id, person_id) DO UPDATE
+            SET verdict = EXCLUDED.verdict, created_at = now()
+        """,
+        (face_id, person_id, verdict),
+    )
+
+
+def fetch_rejections(cur: PgCursor) -> dict[int, set[int]]:
+    """Return person_id -> set(face_id) of rejected pairs (recognition blocklist)."""
+    cur.execute(
+        "SELECT person_id, face_id FROM recognition_feedback WHERE verdict = 'reject'"
+    )
+    rejections: dict[int, set[int]] = {}
+    for person_id, face_id in cur.fetchall():
+        rejections.setdefault(int(person_id), set()).add(int(face_id))
+    return rejections
+
+
 def clear_persons(cur: PgCursor) -> None:
     """Remove every person row, detaching their faces.
 

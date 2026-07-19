@@ -201,6 +201,7 @@ class PersonDetailPage(QtWidgets.QWidget):
         self._grid.photo_activated.connect(self.photo_activated.emit)
         self._grid.detect_faces_requested.connect(self.detect_faces_requested.emit)
         self._grid.find_similar_requested.connect(self.find_similar_requested.emit)
+        self._grid.remove_from_person_requested.connect(self._on_remove_from_person)
         layout.addWidget(self._grid, 1)
 
     def current_photo_ids(self) -> list[int]:
@@ -209,11 +210,33 @@ class PersonDetailPage(QtWidgets.QWidget):
     def show_person(self, person_id: int, name: Optional[str]) -> None:
         self._person_id = person_id
         self._name.setText(name or "Unknown")
+        self._grid.set_person_context(name or "")
         self._model.set_fetcher(
             lambda offset, limit: data.photo_grid(
                 limit=limit, offset=offset, person_id=person_id
             )
         )
+
+    def _on_remove_from_person(self, photo_ids: list[int]) -> None:
+        """User says these photos are not this person: detach + remember."""
+        if self._person_id is None or not photo_ids:
+            return
+        who = self._name.text()
+        reply = QtWidgets.QMessageBox.question(
+            self, "Remove from person",
+            f"Remove {len(photo_ids)} photo(s) from {who}? "
+            "PhotoSphere will remember this and won't re-assign them here.",
+        )
+        if reply != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        moved = data.remove_faces_from_person(self._person_id, photo_ids)
+        if not moved:
+            return
+        self.person_changed.emit()
+        # Reload; if the person has no photos left (it was removed), go back.
+        self.show_person(self._person_id, None if who == "Unknown" else who)
+        if not self._model.photo_ids():
+            self.back_requested.emit()
 
     # -- editing -------------------------------------------------------------
     def _on_rename(self) -> None:

@@ -195,12 +195,19 @@ def _assign_to_existing(cur, global_threshold: float, settings: Settings) -> int
         return 0
     faces_norm = normalize_embeddings(embeddings)
 
+    # Correction memory: a (face, person) the user rejected is never re-assigned.
+    rejections = db.fetch_rejections(cur)
+
     n = faces_norm.shape[0]
     best_score = np.full(n, -np.inf, dtype=np.float32)
     best_pid = np.full(n, -1, dtype=np.int64)
     for person_id, info in per_person.items():
         sims = faces_norm @ info["vecs"].T          # (N_faces, k) cosine sims
         score = sims.max(axis=1)                     # best appearance per face
+        rejected = rejections.get(person_id)
+        if rejected:
+            blocked = np.array([fid in rejected for fid in face_ids])
+            score = np.where(blocked, -np.inf, score)  # never rejoin this person
         better = (score >= info["thr"]) & (score > best_score)
         best_score = np.where(better, score, best_score)
         best_pid = np.where(better, person_id, best_pid)

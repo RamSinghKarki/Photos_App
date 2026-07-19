@@ -197,12 +197,15 @@ class PhotoGrid(QtWidgets.QListView):
     photo_activated = QtCore.Signal(int)
     detect_faces_requested = QtCore.Signal(list)  # selected photo ids
     find_similar_requested = QtCore.Signal(int)   # one photo id
+    remove_from_person_requested = QtCore.Signal(list)  # selected photo ids
 
     def __init__(self, model: PhotoGridModel) -> None:
         super().__init__()
         self.setObjectName("PhotoGrid")
         self.setModel(model)
         self._model = model
+        self._has_person_context = False       # True on a person-detail page
+        self._person_name = ""                 # that person's display name
 
         self.setViewMode(QtWidgets.QListView.ViewMode.IconMode)
         self.setResizeMode(QtWidgets.QListView.ResizeMode.Adjust)
@@ -229,6 +232,15 @@ class PhotoGrid(QtWidgets.QListView):
     def zoom(self, delta: int) -> None:
         self.set_tile_size(self._model.tile_size() + delta)
 
+    def set_person_context(self, name: Optional[str]) -> None:
+        """Enable the 'not this person' correction on a person-detail page.
+
+        Pass a name (``""`` for an unnamed person) to enable it; ``None`` on
+        other pages hides it.
+        """
+        self._has_person_context = name is not None
+        self._person_name = name or ""
+
     def selected_photo_ids(self) -> list[int]:
         """Return the photo ids of the currently selected tiles."""
         ids: list[int] = []
@@ -247,6 +259,13 @@ class PhotoGrid(QtWidgets.QListView):
                 similar.triggered.connect(lambda: self.find_similar_requested.emit(ids[0]))
             action = menu.addAction(f"Detect faces on {len(ids)} selected photo(s)")
             action.triggered.connect(lambda: self.detect_faces_requested.emit(ids))
+            if self._has_person_context:
+                who = self._person_name or "this person"
+                menu.addSeparator()
+                not_person = menu.addAction(f"Not {who} (remove from person)")
+                not_person.triggered.connect(
+                    lambda: self.remove_from_person_requested.emit(ids)
+                )
         else:
             hint = menu.addAction("Select photos, then right-click for actions")
             hint.setEnabled(False)

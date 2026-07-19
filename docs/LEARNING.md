@@ -69,15 +69,22 @@ and **rebuilds the target's gallery** (re-curating representatives + threshold),
 **delete** un-groups faces — all via `database/db.py` helpers; the next update
 respects them.
 
+- **Feedback memory — corrections stick.** On a person's page, select photos →
+  **"Not <name>"**: the faces are detached *and* a durable **rejection** is
+  recorded (`recognition_feedback`). Recognition consults these on every run, so
+  a (face, person) the user rejected is **never re-assigned** — even though its
+  embedding still matches. Emptying a person deletes the group (its rejections
+  cascade away). Rejections are per-face, so correcting one photo never blocks a
+  genuinely new photo of the same person. *(Stage 10)*
+
 ### Deferred stages (next increments)
 
 - **Stage 5 — Context fusion**: same day / event / camera / GPS / companions
   raise confidence when the face signal alone is borderline (needs event/GPS
   grouping first).
 - **Stage 9 — Active learning**: ask "Is this Ram?" only when confidence is
-  borderline; store the answer.
-- **Stage 10 — Feedback memory**: record accepted/rejected/merged/split so an
-  automatic assignment the user already corrected is never repeated.
+  borderline; store the answer (the `recognition_feedback` `confirm` verdict is
+  reserved for exactly this).
 - **Stage 12 — Representative gallery UI**: show each person's learned
   appearances (quality / pose / date) so users see what the system knows.
 
@@ -92,8 +99,8 @@ respects them.
 | GPS / camera / time metadata | `photos` | ✅ |
 | OCR text | `photos.ocr_text` (trigram-indexed) | ✅ |
 | Favorites | `photos.is_favorite` (feeds search ranking) | ✅ |
+| Recognition feedback (rejections) | `recognition_feedback` | ✅ |
 | Object/scene labels | `photo_objects` | ⬜ planned |
-| Recognition feedback (accept/reject/merge) | planned | ⬜ |
 
 ## Roadmap of remaining "levels"
 

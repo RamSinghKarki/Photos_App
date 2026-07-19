@@ -153,6 +153,24 @@ more robust than one centroid. See [LEARNING.md](LEARNING.md).
 
 ---
 
+## `recognition_feedback`
+
+Durable memory of the user's corrections, so an automatic assignment they
+rejected is never repeated (see [LEARNING.md](LEARNING.md)).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | bigint PK | identity |
+| `face_id` | bigint FK → faces | `ON DELETE CASCADE` |
+| `person_id` | bigint FK → persons | `ON DELETE CASCADE` |
+| `verdict` | text | `'reject'` (not this person) or `'confirm'` (reserved) |
+| `created_at` | timestamptz | |
+
+`UNIQUE (face_id, person_id)` — one verdict per pair. `fetch_rejections` reads
+this into the recognition engine's blocklist each run.
+
+---
+
 ## `clip_embeddings`
 
 Per-photo CLIP image embedding for semantic search, versioned by model.
@@ -204,6 +222,8 @@ Grouped by area — this is the full public surface the rest of the app uses.
 - **Representative gallery (recognition v2):** `add_person_embedding`,
   `fetch_person_gallery`, `set_person_representatives`, `set_adaptive_threshold`,
   `fetch_person_representatives`, `clear_person_gallery`, `persons_missing_gallery`.
+- **Feedback memory (recognition):** `record_feedback`, `fetch_rejections`,
+  `unassign_person_faces_in_photos`, `recompute_person_profile`.
 - **Thumbnails:** `stream_photos_needing_thumbnail`, `set_thumbnail_path`,
   `count_photos_needing_thumbnail`.
 - **UI reads:** `library_stats`, `list_photo_grid`, `get_photo_detail`,

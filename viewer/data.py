@@ -90,6 +90,27 @@ def merge_person_into(source_id: int, target_id: int) -> None:
         rebuild_person_gallery(cur, target_id)
 
 
+def remove_faces_from_person(person_id: int, photo_ids: list[int]) -> int:
+    """Correct a mistake: detach this person's faces in the given photos.
+
+    Records a durable **rejection** for each detached face so recognition never
+    re-assigns it to this person, then re-curates the person's profile/gallery
+    (deleting the person if it has no faces left). Returns how many faces moved.
+    """
+    from clustering.incremental import rebuild_person_gallery
+
+    with db.connection() as conn, conn.cursor() as cur:
+        face_ids = db.unassign_person_faces_in_photos(cur, person_id, photo_ids)
+        for face_id in face_ids:
+            db.record_feedback(cur, face_id, person_id, "reject")
+        remaining = db.recompute_person_profile(cur, person_id)
+        if remaining == 0:
+            db.delete_person(cur, person_id)  # empty group; its rejections cascade away
+        else:
+            rebuild_person_gallery(cur, person_id)
+    return len(face_ids)
+
+
 def set_favorite(photo_id: int, favorite: bool) -> None:
     """Mark or unmark a photo as a favorite."""
     with db.connection() as conn, conn.cursor() as cur:

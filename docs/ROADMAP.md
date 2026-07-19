@@ -72,8 +72,12 @@ a single centroid — recognizing the same person across viewpoint, facial hair,
 glasses, lighting, and age. Quality scoring gates what may teach; accepted faces
 adapt the profile; names are preserved and pre-gallery people are backfilled.
 New tables/columns: `person_embeddings`, `persons.adaptive_threshold`. See
-[LEARNING.md](LEARNING.md). *Next:* context fusion, active learning, feedback
-memory, a per-person appearance gallery UI.
+[LEARNING.md](LEARNING.md).
+
+**Feedback memory** ✅ — "Not <name>" on a person's page detaches faces and
+records a durable **rejection** (`recognition_feedback`); recognition never
+re-assigns a rejected (face, person) pair. *Next:* context fusion, active
+learning (the `confirm` verdict is reserved), a per-person appearance gallery UI.
 
 ### Phase A — Stabilize v1.0 (in progress)
 - ✅ **Benchmarks** — `scripts/benchmark.py` + [BENCHMARKS.md](BENCHMARKS.md):

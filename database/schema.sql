@@ -161,6 +161,25 @@ CREATE INDEX IF NOT EXISTS idx_person_embeddings_repr
     ON person_embeddings (person_id) WHERE is_representative;
 
 -- ---------------------------------------------------------------------------
+-- recognition_feedback: durable memory of the user's corrections so an
+-- automatic assignment they already rejected is never repeated. One row per
+-- (face, person): verdict 'reject' means "this face is NOT this person" (the
+-- recognition engine will never auto-assign it there again); 'confirm' is
+-- reserved for an explicit "yes, this is them" signal. Rows cascade away with
+-- their face or person.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS recognition_feedback (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    face_id     BIGINT      NOT NULL REFERENCES faces (id)   ON DELETE CASCADE,
+    person_id   BIGINT      NOT NULL REFERENCES persons (id) ON DELETE CASCADE,
+    verdict     TEXT        NOT NULL,          -- 'reject' | 'confirm'
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (face_id, person_id)
+);
+CREATE INDEX IF NOT EXISTS idx_recognition_feedback_person
+    ON recognition_feedback (person_id);
+
+-- ---------------------------------------------------------------------------
 -- clip_embeddings: per-photo CLIP image embedding for semantic search.
 -- Versioned by model so a future model upgrade can tell which embeddings are
 -- stale (re-embedding upserts the row). One active model per photo.
