@@ -20,6 +20,7 @@ from viewer.components import ComingSoonPage, Sidebar, StatusBar, TopBar
 from viewer.gpuinfo import detect_gpu
 from viewer.pages import DashboardPage, GalleryPage, PeoplePage, PersonDetailPage
 from viewer.photo_viewer import PhotoViewer
+from viewer.state import AppState
 from viewer.tasks import PipelineWorker
 
 logger = get_logger("viewer.main")
@@ -48,6 +49,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setWindowTitle("PhotoSphere AI")
         self.resize(1320, 860)
 
+        self._state = AppState()
+        self._current_page = "dashboard"
         self._worker: Optional[PipelineWorker] = None
 
         # --- Top bar ---
@@ -109,13 +112,39 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._install_shortcuts()
         self._status.set_gpu(detect_gpu().badge())
-        self.show_page("dashboard")
+        self._restore_state()
         self.refresh_all()
+
+    # -- session state (resume where you left off) ---------------------------
+    def _restore_state(self) -> None:
+        """Restore window geometry, gallery zoom, and the last page on launch."""
+        geometry = self._state.geometry()
+        if geometry is not None:
+            self.restoreGeometry(geometry)
+
+        self._gallery.set_tile_size(self._state.tile(self._gallery.tile_size()))
+
+        # Only restore to a page that still exists; fall back to dashboard.
+        last = self._state.page("dashboard")
+        if last not in self._page_keys and last not in self._coming:
+            last = "dashboard"
+        self.show_page(last)
+
+    def _save_state(self) -> None:
+        self._state.save_geometry(self.saveGeometry())
+        self._state.save_page(self._current_page)
+        self._state.save_tile(self._gallery.tile_size())
+        self._state.sync()
+
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802 (Qt name)
+        self._save_state()
+        super().closeEvent(event)
 
     # -- navigation ----------------------------------------------------------
     def show_page(self, key: str) -> None:
         """Switch the content area to the page for ``key`` and refresh it."""
         self._sidebar.select(key)
+        self._current_page = key
         if key in self._page_keys:
             self._stack.setCurrentIndex(self._page_keys[key])
             self._refresh_page(key)
@@ -123,12 +152,16 @@ class MainWindow(QtWidgets.QMainWindow):
             self._stack.setCurrentIndex(self._coming[key])
 
     def _refresh_page(self, key: str) -> None:
-        if key == "dashboard":
-            self._dashboard.refresh()
-        elif key == "photos":
-            self._gallery.refresh()
-        elif key == "people":
-            self._people.refresh()
+        # Defensive: a transient DB issue at launch must not crash the window.
+        try:
+            if key == "dashboard":
+                self._dashboard.refresh()
+            elif key == "photos":
+                self._gallery.refresh()
+            elif key == "people":
+                self._people.refresh()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not refresh page '%s': %s", key, exc)
 
     def refresh_all(self) -> None:
         """Refresh the status bar and the current page."""
@@ -161,8 +194,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # -- pipeline ------------------------------------------------------------
     def _on_import(self) -> None:
-        directory = QtWidgets.QFileDialog.getExistingDirectory(self, "Import Folder")
+        directory = QtWidgets.QFileDialog.getExistingDirectory(
+            self, "Import Folder", self._state.import_dir()
+        )
         if directory:
+            self._state.save_import_dir(directory)
             self._start_pipeline(Path(directory))
 
     def _on_reindex(self) -> None:

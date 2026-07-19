@@ -103,6 +103,12 @@ class GalleryPage(QtWidgets.QWidget):
     def zoom(self, delta: int) -> None:
         self._grid.zoom(delta)
 
+    def set_tile_size(self, tile: int) -> None:
+        self._grid.set_tile_size(tile)
+
+    def tile_size(self) -> int:
+        return self._model.tile_size()
+
     def current_photo_ids(self) -> list[int]:
         return self._model.photo_ids()
 

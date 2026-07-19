@@ -285,6 +285,9 @@ What works today:
   `F11` full screen, `Esc` closes.
 - **Search** — the top bar filters the gallery by filename/camera as you type
   (debounced). Semantic search is a later module.
+- **Resumes where you left off** — window size/position, the last page you were
+  on, and the gallery zoom are remembered between launches (via native
+  per-user settings), and the Import dialog reopens at your last folder.
 
 Keyboard: `Ctrl+O` import · `Ctrl+R` re-index · `Ctrl+F` search · `Ctrl+Q` quit
 · `+`/`-` zoom grid · `F11` full screen · `←`/`→` prev/next in viewer · `Esc`
