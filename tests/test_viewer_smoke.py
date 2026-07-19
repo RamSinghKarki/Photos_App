@@ -79,6 +79,31 @@ def test_drop_filters_folders_from_files(qapp, photo_tree: Path) -> None:
     assert MainWindow._dropped_dirs(_Evt(no_urls)) == []
 
 
+def test_appearance_strip_builds_and_signals(qapp) -> None:
+    """The appearance strip renders one thumb per representative and relays removal."""
+    from viewer.appearance_strip import AppearanceStrip, _RepThumb
+
+    strip = AppearanceStrip()
+    got: list[int] = []
+    strip.representative_rejected.connect(got.append)
+
+    reps = [
+        {"face_id": 10, "crop_path": None, "quality": 0.95, "photo_id": 1, "taken_at": None},
+        {"face_id": 11, "crop_path": None, "quality": 0.70, "photo_id": 2, "taken_at": None},
+    ]
+    strip.set_representatives(reps)
+    thumbs = strip.findChildren(_RepThumb)
+    assert len(thumbs) == 2
+
+    # A thumb's removal request propagates out of the strip with its face id.
+    thumbs[0].rejected.emit(thumbs[0]._face_id)
+    assert got == [10]
+
+    # Empty set clears the thumbs from the layout (only the trailing stretch left).
+    strip.set_representatives([])
+    assert strip._row_layout.count() == 1
+
+
 def test_photo_viewer_navigation(qapp, clean_db, photo_tree: Path) -> None:
     scan_directory(photo_tree)
     generate_thumbnails()

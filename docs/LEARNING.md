@@ -76,6 +76,13 @@ respects them.
   embedding still matches. Emptying a person deletes the group (its rejections
   cascade away). Rejections are per-face, so correcting one photo never blocks a
   genuinely new photo of the same person. *(Stage 10)*
+- **Learning is visible and steerable.** A person's page shows a **"Learned
+  appearances"** strip — the actual representative crops the engine matches
+  against, best-quality first, each labelled with its quality. Right-click a bad
+  representative → **remove appearance**: it's dropped and remembered as a
+  rejection, so you can see *and* correct what the system learned.
+  (`viewer/appearance_strip.py`, `data.person_representatives` /
+  `reject_representative`.) *(Stage 12)*
 
 ### Deferred stages (next increments)
 
@@ -85,8 +92,6 @@ respects them.
 - **Stage 9 — Active learning**: ask "Is this Ram?" only when confidence is
   borderline; store the answer (the `recognition_feedback` `confirm` verdict is
   reserved for exactly this).
-- **Stage 12 — Representative gallery UI**: show each person's learned
-  appearances (quality / pose / date) so users see what the system knows.
 
 ## The knowledge base
 

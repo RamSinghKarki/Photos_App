@@ -223,7 +223,8 @@ Grouped by area — this is the full public surface the rest of the app uses.
   `fetch_person_gallery`, `set_person_representatives`, `set_adaptive_threshold`,
   `fetch_person_representatives`, `clear_person_gallery`, `persons_missing_gallery`.
 - **Feedback memory (recognition):** `record_feedback`, `fetch_rejections`,
-  `unassign_person_faces_in_photos`, `recompute_person_profile`.
+  `unassign_person_faces_in_photos`, `recompute_person_profile`,
+  `list_person_representatives_detail`, `detach_faces`.
 - **Thumbnails:** `stream_photos_needing_thumbnail`, `set_thumbnail_path`,
   `count_photos_needing_thumbnail`.
 - **UI reads:** `library_stats`, `list_photo_grid`, `get_photo_detail`,

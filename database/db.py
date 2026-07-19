@@ -639,6 +639,42 @@ def record_feedback(
     )
 
 
+def list_person_representatives_detail(
+    cur: PgCursor, person_id: int
+) -> list[dict[str, Any]]:
+    """Return a person's representative faces for display (crop + quality + date).
+
+    Ordered best-quality first. Powers the "what PhotoSphere learned" strip on a
+    person's page. ``photo_id`` lets the UI open the source photo.
+    """
+    cur.execute(
+        """
+        SELECT pe.face_id, f.crop_path, pe.quality, f.photo_id, p.taken_at
+          FROM person_embeddings pe
+          JOIN faces f  ON f.id = pe.face_id
+          JOIN photos p ON p.id = f.photo_id
+         WHERE pe.person_id = %s AND pe.is_representative
+         ORDER BY pe.quality DESC, pe.face_id
+        """,
+        (person_id,),
+    )
+    return [
+        {
+            "face_id": int(r[0]),
+            "crop_path": r[1],
+            "quality": float(r[2]),
+            "photo_id": int(r[3]),
+            "taken_at": r[4],
+        }
+        for r in cur.fetchall()
+    ]
+
+
+def detach_faces(cur: PgCursor, face_ids: Sequence[int]) -> None:
+    """Un-assign a set of faces from whatever person they belong to."""
+    cur.execute("UPDATE faces SET person_id = NULL WHERE id = ANY(%s)", (list(face_ids),))
+
+
 def fetch_rejections(cur: PgCursor) -> dict[int, set[int]]:
     """Return person_id -> set(face_id) of rejected pairs (recognition blocklist)."""
     cur.execute(

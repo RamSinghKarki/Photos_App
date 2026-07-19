@@ -90,6 +90,30 @@ def merge_person_into(source_id: int, target_id: int) -> None:
         rebuild_person_gallery(cur, target_id)
 
 
+def person_representatives(person_id: int) -> list[dict[str, Any]]:
+    """The person's learned representative faces (crop + quality + date)."""
+    with timer("query.person_reps"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_person_representatives_detail(cur, person_id)
+
+
+def reject_representative(person_id: int, face_id: int) -> int:
+    """Drop one learned appearance: detach the face + remember the rejection.
+
+    Re-curates the person (or deletes it if empty). Returns the faces remaining.
+    """
+    from clustering.incremental import rebuild_person_gallery
+
+    with db.connection() as conn, conn.cursor() as cur:
+        db.detach_faces(cur, [face_id])
+        db.record_feedback(cur, face_id, person_id, "reject")
+        remaining = db.recompute_person_profile(cur, person_id)
+        if remaining == 0:
+            db.delete_person(cur, person_id)
+        else:
+            rebuild_person_gallery(cur, person_id)
+    return remaining
+
+
 def remove_faces_from_person(person_id: int, photo_ids: list[int]) -> int:
     """Correct a mistake: detach this person's faces in the given photos.
 

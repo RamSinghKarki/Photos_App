@@ -76,8 +76,12 @@ New tables/columns: `person_embeddings`, `persons.adaptive_threshold`. See
 
 **Feedback memory** ✅ — "Not <name>" on a person's page detaches faces and
 records a durable **rejection** (`recognition_feedback`); recognition never
-re-assigns a rejected (face, person) pair. *Next:* context fusion, active
-learning (the `confirm` verdict is reserved), a per-person appearance gallery UI.
+re-assigns a rejected (face, person) pair.
+
+**Appearance gallery UI** ✅ — a person's page shows the learned representative
+crops ("Learned appearances", best-quality first); right-click removes a bad one
+(recorded as a rejection). *Next:* context fusion, active learning (the `confirm`
+verdict is reserved).
 
 ### Phase A — Stabilize v1.0 (in progress)
 - ✅ **Benchmarks** — `scripts/benchmark.py` + [BENCHMARKS.md](BENCHMARKS.md):
