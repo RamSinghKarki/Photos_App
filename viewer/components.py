@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from viewer import icons, theme
 
@@ -322,74 +322,6 @@ class StatusBar(QtWidgets.QFrame):
                 remaining = (self._last_total - self._last_done) / rate
                 text += f"   ETA {format_duration(remaining)}"
         self._clock.setText(text)
-
-
-class PersonCard(QtWidgets.QFrame):
-    """A tappable card for one person: round cover + name + photo count."""
-
-    clicked = QtCore.Signal(int)
-
-    def __init__(self, person: dict) -> None:
-        super().__init__()
-        self.setObjectName("Card")
-        self._person_id = person["id"]
-        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        self.setFixedSize(150, 190)
-
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(12, 14, 12, 12)
-        layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
-
-        cover = QtWidgets.QLabel()
-        cover.setFixedSize(96, 96)
-        cover.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        cover.setPixmap(self._round_cover(person.get("cover_path")))
-        cover.setScaledContents(False)
-
-        name = person.get("display_name") or "Unknown"
-        name_label = QtWidgets.QLabel(name)
-        name_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        name_label.setStyleSheet("font-weight: 600;")
-        count_label = QtWidgets.QLabel(f"{person['face_count']} photos")
-        count_label.setObjectName("Muted")
-        count_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-
-        layout.addWidget(cover, 0, QtCore.Qt.AlignmentFlag.AlignHCenter)
-        layout.addSpacing(6)
-        layout.addWidget(name_label)
-        layout.addWidget(count_label)
-
-    @staticmethod
-    def _round_cover(path: Optional[str]) -> QtGui.QPixmap:
-        """Return a 96px circular cover pixmap (placeholder if no crop)."""
-        diameter = 96
-        source = QtGui.QPixmap(path) if path else QtGui.QPixmap()
-        result = QtGui.QPixmap(diameter, diameter)
-        result.fill(QtCore.Qt.GlobalColor.transparent)
-
-        painter = QtGui.QPainter(result)
-        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
-        path_clip = QtGui.QPainterPath()
-        path_clip.addEllipse(0, 0, diameter, diameter)
-        painter.setClipPath(path_clip)
-
-        if not source.isNull():
-            scaled = source.scaled(
-                diameter, diameter,
-                QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                QtCore.Qt.TransformationMode.SmoothTransformation,
-            )
-            painter.drawPixmap(0, 0, scaled)
-        else:
-            painter.fillRect(0, 0, diameter, diameter, QtGui.QColor(theme.SURFACE_ALT))
-            painter.setPen(QtGui.QColor(theme.TEXT_MUTED))
-            painter.drawText(result.rect(), QtCore.Qt.AlignmentFlag.AlignCenter, "☺")
-        painter.end()
-        return result
-
-    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:  # noqa: N802 (Qt name)
-        self.clicked.emit(self._person_id)
-        super().mousePressEvent(event)
 
 
 class ComingSoonPage(QtWidgets.QWidget):

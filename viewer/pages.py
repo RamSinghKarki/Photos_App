@@ -11,9 +11,9 @@ from typing import Optional
 from PySide6 import QtCore, QtWidgets
 
 from viewer import data
-from viewer.components import PersonCard, StatCard, _human_bytes
-from viewer.flow_layout import FlowLayout
+from viewer.components import StatCard, _human_bytes
 from viewer.gallery import PhotoGrid, PhotoGridModel
+from viewer.people_view import PeopleModel, PeopleView
 from viewer import theme
 
 
@@ -128,7 +128,7 @@ class GalleryPage(QtWidgets.QWidget):
 
 
 class PeoplePage(QtWidgets.QWidget):
-    """A reflowing grid of person cards. Emits :attr:`person_selected`."""
+    """A virtualized grid of people. Emits :attr:`person_selected`."""
 
     person_selected = QtCore.Signal(int)
 
@@ -139,33 +139,19 @@ class PeoplePage(QtWidgets.QWidget):
         layout.setSpacing(12)
         layout.addWidget(_title("People"))
 
-        self._scroll = QtWidgets.QScrollArea()
-        self._scroll.setWidgetResizable(True)
-        self._scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-        self._container = QtWidgets.QWidget()
-        self._flow = FlowLayout(margin=4, spacing=14)
-        self._container.setLayout(self._flow)
-        self._scroll.setWidget(self._container)
-        layout.addWidget(self._scroll, 1)
+        self._model = PeopleModel()
+        self._view = PeopleView(self._model)
+        self._view.person_activated.connect(self.person_selected.emit)
+        layout.addWidget(self._view, 1)
 
         self._empty = QtWidgets.QLabel("No people yet — run face detection and clustering.")
         self._empty.setObjectName("Muted")
         layout.addWidget(self._empty)
 
     def refresh(self) -> None:
-        # Clear existing cards.
-        while self._flow.count():
-            item = self._flow.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
-
         people = data.persons()
         self._empty.setVisible(not people)
-        for person in people:
-            card = PersonCard(person)
-            card.clicked.connect(self.person_selected.emit)
-            self._flow.addWidget(card)
+        self._model.set_people(people)
 
 
 class PersonDetailPage(QtWidgets.QWidget):

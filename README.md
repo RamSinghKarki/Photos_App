@@ -14,6 +14,8 @@ Search, OCR, and more can be added without redesigning the schema.
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How it all fits together — layers, data flow, threading, scale |
 | [docs/DATABASE.md](docs/DATABASE.md) | Schema reference (tables, indexes, helpers, queries) |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Contributor guide — layout, tests, conventions, adding a module |
+| [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | How to profile (PHOTOSPHERE_PERF) + the measured optimizations |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Path to v1.0 — milestones, targets, decisions |
 | [docs/PhotoSphere_AI_System_Prompt.md](docs/PhotoSphere_AI_System_Prompt.md) | Project vision, architecture rules, per-module Definition of Done |
 
 ## Module status
