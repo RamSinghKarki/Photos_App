@@ -50,8 +50,18 @@ The immediate milestone, in order:
    in the background pipeline, versioned `clip_embeddings` table, text-embedding
    cache, and a Search tab. See [AI_PIPELINE.md](AI_PIPELINE.md).
 
-**M5 complete.** Next per the recommended order: OCR → object detection →
-timeline → albums/favorites → duplicates → map → settings → backup → installer.
+**M5 complete.**
+
+### M6 — Self-improving recognition (done: core loop)
+Person profiles (centroids) + **incremental, name-preserving** recognition:
+naming a person teaches the app, new faces are auto-matched, existing names are
+never wiped, confidence-gated. Covers vision Levels 1, 2, 4, 14. See
+[LEARNING.md](LEARNING.md). Remaining levels (feedback history, hybrid signals,
+active learning, personal classifier) are queued there.
+
+### Next per the recommended order
+OCR → object detection → timeline → albums/favorites → duplicates → map →
+settings → backup → installer.
 
 ### M6 — Timeline
 Google-Photos-style date browsing (Year → Month → Day) over the `taken_at` we

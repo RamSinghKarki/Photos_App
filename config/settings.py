@@ -127,6 +127,12 @@ class Settings:
     cluster_algorithm: str = field(
         default_factory=lambda: _env_str("PHOTOSPHERE_CLUSTER_ALGORITHM", "auto").lower()
     )
+    # Cosine-similarity threshold above which a new face is auto-assigned to an
+    # existing person's centroid (incremental recognition). Higher = stricter /
+    # fewer false matches. Faces below it are left for clustering.
+    face_match_threshold: float = field(
+        default_factory=lambda: float(_env_str("PHOTOSPHERE_FACE_MATCH_THRESHOLD", "0.55"))
+    )
 
     # --- AI Search (CLIP) ---------------------------------------------------
     # open_clip model + pretrained tag. ViT-B-32/openai is a light 512-d model.

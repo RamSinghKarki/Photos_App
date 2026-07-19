@@ -118,6 +118,12 @@ BEGIN
     END IF;
 END$$;
 
+-- Person profile: the running-average embedding of a person's faces. Powers
+-- incremental recognition — a new face is matched against these centroids and
+-- auto-assigned to a known person, so naming a cluster teaches the app without
+-- reclustering everything. Added additively (ADD COLUMN IF NOT EXISTS).
+ALTER TABLE persons ADD COLUMN IF NOT EXISTS centroid vector(512);
+
 -- ---------------------------------------------------------------------------
 -- clip_embeddings: per-photo CLIP image embedding for semantic search.
 -- Versioned by model so a future model upgrade can tell which embeddings are

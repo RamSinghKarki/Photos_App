@@ -20,7 +20,7 @@ from typing import Optional
 
 import numpy as np
 
-from clustering.clusterer import NOISE_LABEL, cluster_faces
+from clustering.clusterer import NOISE_LABEL, cluster_faces, person_centroid
 from config.settings import get_settings
 from database import db
 from utils.logging_setup import get_logger
@@ -111,6 +111,7 @@ def recluster(
 
             person_id = db.create_person(cur, face_count=len(member_ids), cover_face_id=cover)
             db.assign_faces_to_person(cur, person_id, member_ids)
+            db.set_person_centroid(cur, person_id, person_centroid(embeddings[indices]))
 
             summary.persons += 1
             summary.grouped += len(member_ids)

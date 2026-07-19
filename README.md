@@ -14,6 +14,7 @@ Search, OCR, and more can be added without redesigning the schema.
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How it all fits together — layers, data flow, threading, scale |
 | [docs/DATABASE.md](docs/DATABASE.md) | Schema reference (tables, indexes, helpers, queries) |
 | [docs/AI_PIPELINE.md](docs/AI_PIPELINE.md) | Face + CLIP search pipeline; the modular embedding architecture |
+| [docs/LEARNING.md](docs/LEARNING.md) | Self-improving recognition — person profiles, incremental learning |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Contributor guide — layout, tests, conventions, adding a module |
 | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | How to profile (PHOTOSPHERE_PERF) + the measured optimizations |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Path to v1.0 — milestones, targets, decisions |
@@ -296,10 +297,16 @@ What works today:
 - **Photos** — a virtualized grid with **incremental paging** (loads a page at a
   time as you scroll) and **off-thread thumbnail decoding**, so it stays smooth
   on 100k+ libraries. `+` / `-` zoom; double-click or Enter opens the viewer.
-- **People** — reflowing person cards with circular cover faces; click to see
+- **People** — virtualized person cards with circular cover faces; click to see
   that person's photos. On a person you can **Rename**, **Merge…** into another
   person (their faces move over), or **Delete** the group (photos/faces are
   kept — only the grouping is removed).
+- **Self-improving recognition** — naming a person **teaches** the app: on the
+  next Import/Re-index, new faces of that person are recognized automatically
+  and folded into their profile. Updates are **incremental and name-preserving**
+  (existing people/names are never wiped; only new faces are matched or grouped).
+  A full destructive rebuild is opt-in: `python -m scripts.cluster_faces --rebuild`.
+  See [docs/LEARNING.md](docs/LEARNING.md).
 - **Manual face detection** — select one or more photos in the grid
   (click, `Ctrl`/`Shift`-click, or `Ctrl+A`), **right-click → "Detect faces on
   N selected"**, and it runs detection on just those photos and regroups people.

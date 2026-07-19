@@ -320,6 +320,83 @@ def fetch_face_vectors(cur: PgCursor) -> tuple[list[int], list[float], "np.ndarr
     return ids, scores, matrix
 
 
+def fetch_ungrouped_face_vectors(
+    cur: PgCursor,
+) -> tuple[list[int], list[float], "np.ndarray"]:
+    """Return (face_ids, det_scores, embeddings) for faces with no person.
+
+    Used by incremental recognition: only faces not yet assigned to a person.
+    """
+    import numpy as np
+
+    def _to_array(value: Any) -> "np.ndarray":
+        if hasattr(value, "to_numpy"):
+            return value.to_numpy().astype(np.float32)
+        return np.asarray(value, dtype=np.float32)
+
+    cur.execute(
+        "SELECT id, det_score, embedding FROM faces WHERE person_id IS NULL ORDER BY id"
+    )
+    ids: list[int] = []
+    scores: list[float] = []
+    vectors: list[Any] = []
+    for face_id, det_score, embedding in cur.fetchall():
+        ids.append(int(face_id))
+        scores.append(float(det_score) if det_score is not None else 0.0)
+        vectors.append(_to_array(embedding))
+    matrix = np.vstack(vectors) if vectors else np.empty((0, 0), np.float32)
+    return ids, scores, matrix
+
+
+def count_ungrouped_faces(cur: PgCursor) -> int:
+    """Count faces not yet assigned to a person."""
+    cur.execute("SELECT count(*) FROM faces WHERE person_id IS NULL")
+    return int(cur.fetchone()[0])
+
+
+def set_person_centroid(cur: PgCursor, person_id: int, centroid: Sequence[float]) -> None:
+    """Store a person's profile (average) embedding."""
+    cur.execute(
+        "UPDATE persons SET centroid = %s, updated_at = now() WHERE id = %s",
+        (list(centroid), person_id),
+    )
+
+
+def fetch_person_centroids(
+    cur: PgCursor,
+) -> tuple[list[int], list[int], "np.ndarray"]:
+    """Return (person_ids, face_counts, centroids) for people with a profile."""
+    import numpy as np
+
+    def _to_array(value: Any) -> "np.ndarray":
+        if hasattr(value, "to_numpy"):
+            return value.to_numpy().astype(np.float32)
+        return np.asarray(value, dtype=np.float32)
+
+    cur.execute(
+        "SELECT id, face_count, centroid FROM persons WHERE centroid IS NOT NULL ORDER BY id"
+    )
+    ids: list[int] = []
+    counts: list[int] = []
+    vectors: list[Any] = []
+    for person_id, face_count, centroid in cur.fetchall():
+        ids.append(int(person_id))
+        counts.append(int(face_count))
+        vectors.append(_to_array(centroid))
+    matrix = np.vstack(vectors) if vectors else np.empty((0, 0), np.float32)
+    return ids, counts, matrix
+
+
+def update_person_profile(
+    cur: PgCursor, person_id: int, centroid: Sequence[float], face_count: int
+) -> None:
+    """Set a person's centroid and face_count together (after assignment)."""
+    cur.execute(
+        "UPDATE persons SET centroid = %s, face_count = %s, updated_at = now() WHERE id = %s",
+        (list(centroid), face_count, person_id),
+    )
+
+
 def clear_persons(cur: PgCursor) -> None:
     """Remove every person row, detaching their faces.
 
@@ -380,20 +457,56 @@ def merge_persons(cur: PgCursor, source_id: int, target_id: int) -> None:
     """
     if source_id == target_id:
         return
+    import numpy as np
+
     cur.execute(
         "UPDATE faces SET person_id = %s WHERE person_id = %s",
         (target_id, source_id),
     )
     cur.execute("DELETE FROM persons WHERE id = %s", (source_id,))
+
+    # Recompute the target's profile (centroid + count) from its current faces.
+    _ids, _scores, embeddings = _face_vectors_for_person(cur, target_id)
+    count = int(embeddings.shape[0])
+    if count:
+        centroid = embeddings.mean(axis=0)
+        norm = float(np.linalg.norm(centroid))
+        centroid = (centroid / norm) if norm else centroid
+        cur.execute(
+            "UPDATE persons SET face_count = %s, centroid = %s, updated_at = now() WHERE id = %s",
+            (count, centroid.tolist(), target_id),
+        )
+    else:
+        cur.execute(
+            "UPDATE persons SET face_count = 0, updated_at = now() WHERE id = %s",
+            (target_id,),
+        )
+
+
+def _face_vectors_for_person(
+    cur: PgCursor, person_id: int
+) -> tuple[list[int], list[float], "np.ndarray"]:
+    """Return (ids, det_scores, embeddings) for one person's faces."""
+    import numpy as np
+
+    def _to_array(value: Any) -> "np.ndarray":
+        if hasattr(value, "to_numpy"):
+            return value.to_numpy().astype(np.float32)
+        return np.asarray(value, dtype=np.float32)
+
     cur.execute(
-        """
-        UPDATE persons
-           SET face_count = (SELECT count(*) FROM faces WHERE person_id = %s),
-               updated_at = now()
-         WHERE id = %s
-        """,
-        (target_id, target_id),
+        "SELECT id, det_score, embedding FROM faces WHERE person_id = %s ORDER BY id",
+        (person_id,),
     )
+    ids: list[int] = []
+    scores: list[float] = []
+    vectors: list[Any] = []
+    for face_id, det_score, embedding in cur.fetchall():
+        ids.append(int(face_id))
+        scores.append(float(det_score) if det_score is not None else 0.0)
+        vectors.append(_to_array(embedding))
+    matrix = np.vstack(vectors) if vectors else np.empty((0, 0), np.float32)
+    return ids, scores, matrix
 
 
 # ---------------------------------------------------------------------------

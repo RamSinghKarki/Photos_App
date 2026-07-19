@@ -43,6 +43,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--algorithm", choices=["auto", "hdbscan", "dbscan"], default=None,
         help="Clustering engine (default 'auto': HDBSCAN if installed, else DBSCAN).",
     )
+    parser.add_argument(
+        "--rebuild", action="store_true",
+        help="Full destructive re-cluster (discards existing groups AND names). "
+             "Default is an incremental, name-preserving update.",
+    )
     parser.add_argument("--log-level", default=None, help="e.g. DEBUG or INFO.")
     return parser.parse_args(argv)
 
@@ -52,8 +57,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     logger = setup_logging(args.log_level)
 
-    logger.info("Starting face clustering")
-    summary = recluster(eps=args.eps, min_samples=args.min_samples, algorithm=args.algorithm)
+    if args.rebuild:
+        logger.info("Full re-cluster (rebuild)")
+        summary = recluster(eps=args.eps, min_samples=args.min_samples, algorithm=args.algorithm)
+    else:
+        from clustering.incremental import update_people
+
+        logger.info("Incremental people update")
+        summary = update_people(
+            eps=args.eps, min_samples=args.min_samples, algorithm=args.algorithm
+        )
     print(summary.render())
     return 0
 

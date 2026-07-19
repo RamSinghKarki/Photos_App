@@ -53,6 +53,19 @@ def normalize_embeddings(embeddings: np.ndarray) -> np.ndarray:
     return embeddings / norms
 
 
+def person_centroid(embeddings: np.ndarray) -> list[float]:
+    """Return a person's profile vector: the normalized mean of member faces.
+
+    Averaging unit-normalized embeddings and renormalizing gives a stable
+    representative direction for matching new faces (cosine similarity).
+    """
+    normalized = normalize_embeddings(np.asarray(embeddings, dtype=np.float32))
+    mean = normalized.mean(axis=0)
+    norm = float(np.linalg.norm(mean))
+    centroid = (mean / norm) if norm else mean
+    return centroid.astype(np.float32).tolist()
+
+
 def cluster_faces(
     embeddings: np.ndarray, eps: float, min_samples: int, algorithm: str = "auto"
 ) -> np.ndarray:

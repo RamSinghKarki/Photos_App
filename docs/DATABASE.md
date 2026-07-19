@@ -121,6 +121,7 @@ A group of faces believed to be the same individual (created by clustering).
 | `display_name` | text | user-assignable name (nullable; UI feature) |
 | `face_count` | integer | members in the group |
 | `cover_face_id` | bigint FK → faces | representative face (`ON DELETE SET NULL`) |
+| `centroid` | vector(512) | profile = running-average of the person's face embeddings; drives incremental recognition of new faces (see [LEARNING.md](LEARNING.md)) |
 | `created_at`, `updated_at` | timestamptz | |
 
 Clustering is a full rebuild: `persons` is cleared (which nulls `faces.person_id`
@@ -170,8 +171,10 @@ Grouped by area — this is the full public surface the rest of the app uses.
   `iter_photos_pending_faces`, `stream_photos_pending_faces`,
   `delete_faces_for_photo`, `reset_faces_processed`, `count_faces`,
   `count_photos_pending_faces`.
-- **Persons/clustering:** `fetch_face_vectors`, `clear_persons`, `create_person`,
-  `assign_faces_to_person`, `count_persons`, `list_persons_with_cover`,
+- **Persons/clustering:** `fetch_face_vectors`, `fetch_ungrouped_face_vectors`,
+  `count_ungrouped_faces`, `clear_persons`, `create_person`,
+  `assign_faces_to_person`, `set_person_centroid`, `fetch_person_centroids`,
+  `update_person_profile`, `count_persons`, `list_persons_with_cover`,
   `rename_person`, `delete_person`, `merge_persons`.
 - **Thumbnails:** `stream_photos_needing_thumbnail`, `set_thumbnail_path`,
   `count_photos_needing_thumbnail`.

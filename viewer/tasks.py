@@ -17,7 +17,7 @@ from typing import Callable, Optional
 
 from PySide6 import QtCore
 
-from clustering.processor import recluster
+from clustering.incremental import update_people
 from faces.detector import FaceDetector
 from faces.processor import process_faces
 from scanner.scanner import scan_directory
@@ -102,12 +102,12 @@ class PipelineWorker(QtCore.QThread):
                 faces = process_faces(
                     detector, photo_ids=self._photo_ids, on_progress=self._on_progress
                 )
-                self.step_changed.emit("Grouping people")
-                clusters = recluster()
+                self.step_changed.emit("Recognizing people")
+                update = update_people()
                 self.step_changed.emit("Done")
                 self.finished_ok.emit(
                     f"+{faces.faces} faces on {len(self._photo_ids)} photos  ·  "
-                    f"{clusters.persons} people"
+                    f"{update.recognized} recognized, {update.new_people} new"
                 )
                 return
 
@@ -127,9 +127,9 @@ class PipelineWorker(QtCore.QThread):
                     faces = process_faces(detector, on_progress=self._on_progress)
                     parts.append(f"+{faces.faces} faces")
 
-                    self.step_changed.emit("Grouping people")
-                    clusters = recluster()
-                    parts.append(f"{clusters.persons} people")
+                    self.step_changed.emit("Recognizing people")
+                    update = update_people()
+                    parts.append(f"{update.recognized} recognized, {update.new_people} new")
                 else:
                     parts.append("faces skipped (no model)")
 
