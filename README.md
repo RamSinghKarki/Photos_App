@@ -17,6 +17,7 @@ Search, OCR, and more can be added without redesigning the schema.
 | [docs/LEARNING.md](docs/LEARNING.md) | Self-improving recognition — person profiles, incremental learning |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Contributor guide — layout, tests, conventions, adding a module |
 | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | How to profile (PHOTOSPHERE_PERF) + the measured optimizations |
+| [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | Query/UI/search timings at 1k / 10k / 100k photos |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Path to v1.0 — milestones, targets, decisions |
 | [docs/PhotoSphere_AI_System_Prompt.md](docs/PhotoSphere_AI_System_Prompt.md) | Project vision, architecture rules, per-module Definition of Done |
 

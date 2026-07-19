@@ -59,9 +59,23 @@ never wiped, confidence-gated. Covers vision Levels 1, 2, 4, 14. See
 [LEARNING.md](LEARNING.md). Remaining levels (feedback history, hybrid signals,
 active learning, personal classifier) are queued there.
 
-### Next per the recommended order
-OCR → object detection → timeline → albums/favorites → duplicates → map →
-settings → backup → installer.
+### Phase A — Stabilize v1.0 (in progress)
+- ✅ **Benchmarks** — `scripts/benchmark.py` + [BENCHMARKS.md](BENCHMARKS.md):
+  all interactions < 50 ms up to 100k photos.
+- ✅ **Robustness tests** — missing thumbnails, AI model/GPU unavailable, DB
+  unreachable at launch (`tests/test_robustness.py`); corrupt/deleted images and
+  interrupted work covered by existing suites.
+- ⬜ **UI polish** — skeleton loading, transitions, drag-and-drop, richer context
+  menus, notifications, search suggestions.
+
+### Phase B — Unified AI Search platform (next)
+Extend the search engine (already modular: CLIP backend + `filters` hook) into
+one system where CLIP + metadata + faces + OCR + objects all contribute, with
+blended ranking (similarity + recency + favorites + people).
+
+### Then per the recommended order
+OCR → object detection → similar-image → duplicates → timeline → albums →
+map → video → backup/export → installer.
 
 ### M6 — Timeline
 Google-Photos-style date browsing (Year → Month → Day) over the `taken_at` we
