@@ -1,0 +1,134 @@
+# PhotoSphere AI — Roadmap to v1.0
+
+**Vision.** A professional, **fully offline**, AI-powered photo management
+platform: complete privacy with intelligent organization, search, and
+recognition — no cloud, ever. It scales from today's face recognition to
+semantic search, OCR, object detection, duplicate detection, and smart albums
+while keeping everything local.
+
+This roadmap sequences the work into milestones. It is deliberately incremental:
+each milestone is production-quality and shippable on its own.
+
+---
+
+## Where we are today (v0.4)
+
+Already built, tested, and offline:
+
+| Capability | Status | Notes |
+|-----------|--------|-------|
+| Scanner (EXIF + dedup) | ✅ | SHA-256 identity, EXIF incl. GPS, streaming, idempotent |
+| Thumbnails | ✅ (single size) | cached, EXIF-oriented, async decode; **multi-res pending** |
+| Metadata in PostgreSQL | ✅ (core) | camera/model/orientation/GPS/dims/taken_at; **lens/ISO/exposure/focal pending** |
+| Face detection + embeddings | ✅ | InsightFace on GPU (CPU fallback), 512-d, raw embeddings |
+| Clustering → people | ✅ | DBSCAN cosine; cover face; ungrouped left NULL |
+| Background pipeline | ✅ | one worker chains scan→thumb→face→cluster, progress + ETA, **Stop/Continue** |
+| Manual per-photo face detection | ✅ | select → right-click → detect |
+| Desktop UI (Fluent, dark) | ✅ | shell, dashboard, gallery (paged + async), people, viewer, status/GPU badges |
+| Resume UI state | ✅ | window/page/zoom/import-folder remembered |
+| GPU detection + graceful CPU fallback | ✅ | `scripts/setup_check`, status badge |
+| Docs | ✅ (core) | README, INSTALL, ARCHITECTURE, DATABASE, DEVELOPMENT, system prompt |
+
+So several roadmap items (thumbnail engine, metadata engine, background jobs,
+memory cache, GPU fallback, error recovery, base docs) already exist in a first
+form. The milestones below **extend** them rather than starting over.
+
+---
+
+## Milestones
+
+### M5 — Google-Photos core (next, user-prioritized)
+The immediate milestone, in order:
+1. **Clustering** — DBSCAN today; add **HDBSCAN** as an optional, better
+   algorithm (auto-select if installed, DBSCAN fallback).
+2. **People page: rename + merge** (+ delete/ungroup) — make people editable.
+   *(building now)*
+3. **Fast gallery with cached thumbnails** — mostly done (paged + async +
+   LRU); extend to multi-resolution tiers (M8) for the 60 FPS / <20 ms target.
+4. **Natural-language search with CLIP** — local CLIP embeddings into the
+   existing `photos.clip_embedding vector(768)`; vector search over text.
+
+### M6 — Timeline
+Google-Photos-style date browsing (Year → Month → Day) over the `taken_at` we
+already store. Sticky date headers, jump-to-date scrollbar. Low risk, high
+visibility. *New:* `timeline/` query helpers + a `TimelinePage`.
+
+### M6 — Duplicate detection
+Three-tier: exact (SHA-256, already stored) → **perceptual hash** (resized/
+recompressed) → **embedding similarity** (edited/near-dupes, via pgvector).
+*New:* `duplicate_detection/`, a `duplicates` table, a review UI.
+
+### M7 — Metadata engine expansion + structured search
+Add lens, ISO, exposure, focal length, and normalize into searchable fields.
+Turn the top-bar search into structured filters (camera / lens / ISO / date /
+favorite / folder). *New:* `metadata/` extractor, extra `photos` columns,
+search grammar.
+
+### M8 — Multi-resolution thumbnails + persistent job queue
+Generate 128/256/512 tiers into `cache/thumbnails/<size>/`; a `jobs` table makes
+indexing durable and resumable across restarts, with independent per-worker
+progress. *New:* `cache/` tiers, `workers/` queue, `jobs` table.
+
+### M9 — Smart albums + favorites/tags
+Auto-albums (e.g. by person, place, time cluster, "night", "drone") + manual
+albums, favorites, tags. *New:* `albums/`, tables `albums`, `photo_album`,
+`tags`, `favorites`.
+
+### M10 — Semantic (AI) search with CLIP
+Local CLIP embeddings into the existing `photos.clip_embedding vector(768)`;
+natural-language search ("red car", "mountain", "dog") via vector search. *New:*
+`search/` + CLIP model (local), reuse pgvector.
+
+### M11 — OCR
+Extract text into the existing `photos.ocr_text`; make it searchable
+("passport", "certificate"). *New:* `ocr/` (local OCR engine).
+
+### M12 — Object detection
+Detect objects/scenes; searchable tags. *New:* `objects/` + `object_detections`
+table.
+
+Cross-cutting, folded in as we go: face **quality check** + alignment metadata
+(M6-ish), per-area log files, memory/disk cache tuning for the 100k/60fps
+targets, and the remaining docs (AI_PIPELINE, SYSTEM_DESIGN, UI_GUIDE,
+PERFORMANCE, TEST_PLAN, SECURITY, CHANGELOG, DECISIONS, CONTRIBUTING).
+
+---
+
+## Performance targets (v1.0)
+
+| Metric | Target |
+|--------|--------|
+| Launch (100k photos) | < 3 s |
+| Gallery scroll | ~60 FPS |
+| Thumbnail fetch (cached) | < 20 ms |
+| Face detection | GPU (CPU fallback) |
+| Structured DB search | < 100 ms |
+
+Current design already supports these directionally (paging, async thumbs,
+indexes, ivfflat); M8 (tiered thumbnails + job queue) and targeted profiling
+close the gap and let us measure them.
+
+---
+
+## Open architectural decision: directory layout
+
+The proposed v1.0 tree nests everything under `app/` (`app/gui/...`,
+`app/faces/...`, etc.). Trade-off:
+
+- **Restructure now:** matches a large commercial layout, but is a big-bang move
+  that rewrites every import for **zero user-facing value** and churns history.
+- **Keep the current flat packages** (`scanner/`, `faces/`, `viewer/`, …) and
+  add new modules alongside; split the UI internally (`viewer/pages/`,
+  `viewer/widgets/`) as it grows.
+
+**Recommendation:** keep flat for now and refactor to `app/` only when the tree
+actually hurts — decided with the user, not pre-emptively.
+
+---
+
+## Documentation to add on the way to v1.0
+
+`AI_PIPELINE.md`, `SYSTEM_DESIGN.md`, `UI_GUIDE.md`, `PERFORMANCE.md`,
+`TEST_PLAN.md`, `SECURITY.md`, `CHANGELOG.md`, `DECISIONS.md` (ADRs),
+`CONTRIBUTING.md`, `API.md` — added alongside the milestone that makes each one
+meaningful, not all up front.
