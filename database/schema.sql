@@ -13,6 +13,7 @@
 --     photo_id. Nothing here needs a destructive migration to grow.
 
 CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;   -- fast substring search over OCR text
 
 -- ---------------------------------------------------------------------------
 -- photos: one row per unique image file discovered by the scanner.
@@ -60,6 +61,9 @@ CREATE INDEX IF NOT EXISTS idx_photos_taken_at       ON photos (taken_at);
 CREATE INDEX IF NOT EXISTS idx_photos_is_favorite    ON photos (is_favorite);
 CREATE INDEX IF NOT EXISTS idx_photos_faces_pending  ON photos (faces_processed)
     WHERE faces_processed = FALSE;
+-- Trigram index for fast substring search over extracted OCR text.
+CREATE INDEX IF NOT EXISTS idx_photos_ocr_trgm
+    ON photos USING gin (ocr_text gin_trgm_ops);
 
 -- ---------------------------------------------------------------------------
 -- faces: one row per detected face. Many faces may point at one photo.

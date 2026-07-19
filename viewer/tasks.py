@@ -58,6 +58,13 @@ def _default_clip_backend():
     return default_backend()
 
 
+def _default_ocr_backend():
+    """Build the real OCR backend, or None if RapidOCR isn't installed."""
+    from ocr.backend import default_backend
+
+    return default_backend()
+
+
 class PipelineWorker(QtCore.QThread):
     """Runs scan/thumbnail/face/cluster stages and emits progress."""
 
@@ -74,6 +81,7 @@ class PipelineWorker(QtCore.QThread):
         photo_ids: Optional[list[int]] = None,
         detector_factory: Optional[DetectorFactory] = None,
         clip_factory: Optional[Callable[[], object]] = None,
+        ocr_factory: Optional[Callable[[], object]] = None,
     ) -> None:
         super().__init__()
         self._root = root
@@ -81,6 +89,7 @@ class PipelineWorker(QtCore.QThread):
         self._photo_ids = photo_ids
         self._detector_factory = detector_factory or _default_detector
         self._clip_factory = clip_factory or _default_clip_backend
+        self._ocr_factory = ocr_factory or _default_ocr_backend
         self._cancelled = False
 
     def cancel(self) -> None:
@@ -141,6 +150,15 @@ class PipelineWorker(QtCore.QThread):
                     self.step_changed.emit("Indexing search")
                     emb = embed_images(clip_backend, on_progress=self._on_progress)
                     parts.append(f"+{emb.embedded} search")
+
+                # OCR text index (optional; skipped if RapidOCR not installed).
+                ocr_backend = self._ocr_factory()
+                if ocr_backend is not None:
+                    from ocr.processor import run_ocr
+
+                    self.step_changed.emit("Reading text (OCR)")
+                    ocr = run_ocr(ocr_backend, on_progress=self._on_progress)
+                    parts.append(f"+{ocr.with_text} OCR")
 
             self.step_changed.emit("Done")
             self.finished_ok.emit("  ·  ".join(parts) if parts else "Nothing to do")

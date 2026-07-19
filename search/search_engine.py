@@ -87,6 +87,7 @@ class SearchEngine:
 
         vector = self.encode_query(text)
         settings = get_settings()
+        pool = max(limit * 4, 200)
 
         with timer("search.vector_query"), db.connection() as conn, conn.cursor() as cur:
             # Combine face signal: if a query word names a known person, restrict.
@@ -96,32 +97,53 @@ class SearchEngine:
                     if pid is not None:
                         filters["person_id"] = pid
                         break
+            fav = bool(filters.get("favorite", False))
+            since, until, person_id = filters.get("since"), filters.get("until"), filters.get("person_id")
 
-            # A candidate pool larger than `limit` so ranking can reorder.
-            pool = max(limit * 4, 200)
-            rows = db.search_candidates(
+            clip_rows = db.search_candidates(
                 cur, vector.tolist(), self._backend.model_id, pool,
-                favorite=bool(filters.get("favorite", False)),
-                since=filters.get("since"),
-                until=filters.get("until"),
-                person_id=filters.get("person_id"),
+                favorite=fav, since=since, until=until, person_id=person_id,
+            )
+            # OCR signal: photos whose extracted text matches the query.
+            ocr_rows = db.search_photos_by_ocr(
+                cur, text.split(), pool,
+                favorite=fav, since=since, until=until, person_id=person_id,
             )
 
-        ranked = self._rank(rows, settings.search_favorite_boost, settings.search_recency_boost)
+        # Merge the two candidate sources by photo id.
+        merged: dict[int, list] = {}
+        for pid, path, thumb, taken, is_fav, sim in clip_rows:
+            merged[pid] = [path, thumb, taken, is_fav, sim, False]
+        for pid, path, thumb, taken, is_fav in ocr_rows:
+            if pid in merged:
+                merged[pid][5] = True                 # also an OCR hit
+            else:
+                merged[pid] = [path, thumb, taken, is_fav, 0.0, True]
+
+        rows = [(pid, *vals) for pid, vals in merged.items()]
+        ranked = self._rank(
+            rows, settings.search_favorite_boost, settings.search_recency_boost,
+            settings.search_ocr_boost,
+        )
         return ranked[:limit]
 
     @staticmethod
-    def _rank(rows, favorite_boost: float, recency_boost: float) -> list[SearchResult]:
-        """Blend CLIP similarity with favorite + recency into a final score."""
+    def _rank(rows, favorite_boost: float, recency_boost: float, ocr_boost: float) -> list[SearchResult]:
+        """Blend CLIP similarity with OCR, favorite and recency into a score."""
         # Recency normalized across the candidate pool (newest -> 1.0).
         times = [r[3].timestamp() for r in rows if r[3] is not None]
         t_min, t_max = (min(times), max(times)) if times else (0.0, 0.0)
         span = (t_max - t_min) or 1.0
 
         results = []
-        for photo_id, path, thumb, taken_at, is_fav, sim in rows:
+        for photo_id, path, thumb, taken_at, is_fav, sim, ocr_hit in rows:
             recency = ((taken_at.timestamp() - t_min) / span) if taken_at is not None else 0.0
-            score = sim + (favorite_boost if is_fav else 0.0) + recency_boost * recency
+            score = (
+                sim
+                + (ocr_boost if ocr_hit else 0.0)
+                + (favorite_boost if is_fav else 0.0)
+                + recency_boost * recency
+            )
             results.append(
                 SearchResult(
                     photo_id=photo_id, file_path=path, thumbnail_path=thumb,

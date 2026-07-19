@@ -76,9 +76,16 @@ user signal (♥ in the viewer). OCR/object labels plug into the same
 candidate → filter → rank shape with no API change. See
 [AI_PIPELINE.md](AI_PIPELINE.md).
 
+### Signals feeding the unified search
+- ✅ **CLIP** semantic embeddings
+- ✅ **Faces** (person-name auto-filter)
+- ✅ **Favorites** + **recency** ranking
+- ✅ **OCR** text (RapidOCR, trigram-indexed, merged + boosted)
+- ⬜ **Objects** (YOLO/RT-DETR) → `photo_objects`, next
+
 ### Then per the recommended order
-OCR → object detection → similar-image → duplicates → timeline → albums →
-map → video → backup/export → installer.
+Object detection → similar-image (nearest-neighbour over `clip_embeddings`) →
+duplicates → timeline → albums → map → video → backup/export → installer.
 
 ### M6 — Timeline
 Google-Photos-style date browsing (Year → Month → Day) over the `taken_at` we

@@ -158,6 +158,14 @@ class Settings:
     search_recency_boost: float = field(
         default_factory=lambda: float(_env_str("PHOTOSPHERE_SEARCH_RECENCY_BOOST", "0.05"))
     )
+    # Boost applied to results whose OCR text matches the query (strong signal).
+    search_ocr_boost: float = field(
+        default_factory=lambda: float(_env_str("PHOTOSPHERE_SEARCH_OCR_BOOST", "0.35"))
+    )
+
+    # --- OCR ----------------------------------------------------------------
+    # RapidOCR language(s); comma-separated. Default English.
+    ocr_languages: str = field(default_factory=lambda: _env_str("PHOTOSPHERE_OCR_LANGUAGES", "en"))
 
     # --- Thumbnails / Viewer (Module 4) -------------------------------------
     # Longest edge (px) of cached grid thumbnails. The gallery shows these, not

@@ -19,6 +19,9 @@ onnxruntime-gpu>=1.17     # local GPU backend for InsightFace.
 scikit-learn>=1.3         # DBSCAN grouping of face embeddings (local)
 hdbscan>=0.8             # density clustering (auto-used; better than DBSCAN)
 
+# OCR — local text extraction for search (optional)
+rapidocr-onnxruntime>=1.3  # offline OCR (ONNX); enables searching photo text
+
 # AI Search (CLIP) — local, GPU-accelerated
 open-clip-torch>=2.20    # CLIP image + text embeddings for semantic search
                          #   Requires PyTorch. Install the CUDA build for your

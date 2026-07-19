@@ -327,6 +327,10 @@ What works today:
   does a quick filename/camera filter as you type.
 - **Favorites** — mark a photo with ♥ in the viewer (or press `F`); favorites
   boost search ranking and can be filtered.
+- **OCR text search** — Import/Re-index extract text from your photos (RapidOCR,
+  offline) so searching "passport", "invoice", a license plate, etc. finds
+  document photos. OCR matches merge into the unified ranking. Needs
+  `rapidocr-onnxruntime` (skipped if absent).
 - **Resumes where you left off** — window size/position, the last page you were
   on, and the gallery zoom are remembered between launches (via native
   per-user settings), and the Import dialog reopens at your last folder.

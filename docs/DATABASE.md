@@ -181,7 +181,10 @@ Grouped by area — this is the full public surface the rest of the app uses.
 - **UI reads:** `library_stats`, `list_photo_grid`, `get_photo_detail`,
   `recent_scan_runs`.
 - **CLIP / search:** `stream_photos_needing_clip`, `count_photos_needing_clip`,
-  `upsert_clip_embedding`, `count_clip_embeddings`, `search_photos_by_clip`.
+  `upsert_clip_embedding`, `count_clip_embeddings`, `search_photos_by_clip`,
+  `search_candidates`, `set_favorite`, `find_person_id_by_exact_name`.
+- **OCR:** `stream_photos_needing_ocr`, `count_photos_needing_ocr`,
+  `set_ocr_text`, `count_ocr_texts`, `search_photos_by_ocr`.
 - **Scan runs:** `start_scan_run`, `finish_scan_run`.
 
 ---

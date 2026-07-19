@@ -818,6 +818,99 @@ def find_person_id_by_exact_name(cur: PgCursor, name: str) -> Optional[int]:
     return int(ids[0]) if len(ids) == 1 else None
 
 
+# ---------------------------------------------------------------------------
+# OCR helpers
+# ---------------------------------------------------------------------------
+def stream_photos_needing_ocr(
+    conn: PgConnection, limit: Optional[int] = None
+) -> Iterator[tuple[int, str]]:
+    """Yield (id, file_path) for photos with no OCR run yet.
+
+    ``ocr_text IS NULL`` means not processed; an empty string means processed
+    with no text found, so those are not re-processed.
+    """
+    sql = "SELECT id, file_path FROM photos WHERE ocr_text IS NULL ORDER BY id"
+    params: tuple[Any, ...] = ()
+    if limit is not None:
+        sql += " LIMIT %s"
+        params = (limit,)
+    with conn.cursor(name="pending_ocr") as cur:
+        cur.itersize = 256
+        cur.execute(sql, params)
+        for row in cur:
+            yield int(row[0]), row[1]
+
+
+def count_photos_needing_ocr(cur: PgCursor) -> int:
+    """Count photos not yet processed by OCR."""
+    cur.execute("SELECT count(*) FROM photos WHERE ocr_text IS NULL")
+    return int(cur.fetchone()[0])
+
+
+def set_ocr_text(cur: PgCursor, photo_id: int, text: str) -> None:
+    """Store extracted OCR text (empty string marks 'processed, no text')."""
+    cur.execute(
+        "UPDATE photos SET ocr_text = %s, updated_at = now() WHERE id = %s",
+        (text, photo_id),
+    )
+
+
+def count_ocr_texts(cur: PgCursor) -> int:
+    """Count photos that have non-empty OCR text."""
+    cur.execute("SELECT count(*) FROM photos WHERE ocr_text IS NOT NULL AND ocr_text <> ''")
+    return int(cur.fetchone()[0])
+
+
+def search_photos_by_ocr(
+    cur: PgCursor,
+    tokens: Sequence[str],
+    limit: int,
+    favorite: bool = False,
+    since: Any = None,
+    until: Any = None,
+    person_id: Optional[int] = None,
+) -> list[tuple[int, str, Optional[str], Any, bool]]:
+    """Return photos whose OCR text contains any of ``tokens`` (+ filters).
+
+    Rows are (id, file_path, thumbnail_path, taken_at, is_favorite), newest
+    first. Uses the trigram index for fast substring matching.
+    """
+    tokens = [t for t in tokens if len(t) >= 3]
+    if not tokens:
+        return []
+    clauses = ["p.ocr_text IS NOT NULL"]
+    params: list[Any] = []
+
+    ors = " OR ".join(["p.ocr_text ILIKE %s"] * len(tokens))
+    clauses.append(f"({ors})")
+    params.extend(f"%{t}%" for t in tokens)
+
+    if favorite:
+        clauses.append("p.is_favorite = TRUE")
+    if since is not None:
+        clauses.append("p.taken_at >= %s")
+        params.append(since)
+    if until is not None:
+        clauses.append("p.taken_at <= %s")
+        params.append(until)
+    if person_id is not None:
+        clauses.append("EXISTS (SELECT 1 FROM faces f WHERE f.photo_id = p.id AND f.person_id = %s)")
+        params.append(person_id)
+
+    params.append(limit)
+    cur.execute(
+        f"""
+        SELECT p.id, p.file_path, p.thumbnail_path, p.taken_at, p.is_favorite
+          FROM photos p
+         WHERE {" AND ".join(clauses)}
+         ORDER BY p.taken_at DESC NULLS LAST, p.id DESC
+         LIMIT %s
+        """,
+        params,
+    )
+    return [(int(r[0]), r[1], r[2], r[3], bool(r[4])) for r in cur.fetchall()]
+
+
 def recent_scan_runs(cur: PgCursor, limit: int = 5) -> list[dict[str, Any]]:
     """Return the most recent scan runs for the dashboard activity feed."""
     cur.execute(

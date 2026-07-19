@@ -15,8 +15,10 @@ flowchart LR
     FE --> CL[Cluster<br/>HDBSCAN/DBSCAN]
     CL --> PPL[Persons]
     IMG --> CE[CLIP image embed<br/>512-d, batched/GPU]
+    IMG --> OCR[OCR text<br/>RapidOCR]
     CE --> VDB[(pgvector)]
     FE --> VDB
+    OCR --> KBT[(photos.ocr_text<br/>trigram index)]
 ```
 
 All stages run in the background pipeline (`viewer/tasks.PipelineWorker`) off the
@@ -87,8 +89,12 @@ pulls a candidate pool from pgvector, applies **structured filters**, and
 - **Blended ranking**: `final = similarity + w_favorite·favorite +
   w_recency·recency` (weights `PHOTOSPHERE_SEARCH_FAVORITE_BOOST` /
   `..._RECENCY_BOOST`). CLIP dominates; favorites and recency break ties.
-- **Extensible**: OCR text and object labels become additional filters/boosts
-  here later — the same candidate-pool → filter → rank shape, no API change.
+- **OCR signal (now)**: photos whose extracted `ocr_text` matches the query are
+  merged into the candidate pool and boosted (`PHOTOSPHERE_SEARCH_OCR_BOOST`), so
+  "passport" / "invoice" find document photos even when CLIP alone would miss
+  them. Text match uses a `pg_trgm` index.
+- **Extensible**: object labels plug in next the same way — the same
+  candidate-pool → filter → rank shape, no API change.
 
 Searches run on a background thread so the UI never blocks (the first query may
 load the model). **Favorites** are a user signal: the photo viewer's ♥ toggle
