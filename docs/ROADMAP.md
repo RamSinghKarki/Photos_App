@@ -39,14 +39,14 @@ form. The milestones below **extend** them rather than starting over.
 
 ### M5 — Google-Photos core (next, user-prioritized)
 The immediate milestone, in order:
-1. **Clustering** — DBSCAN today; add **HDBSCAN** as an optional, better
-   algorithm (auto-select if installed, DBSCAN fallback).
-2. **People page: rename + merge** (+ delete/ungroup) — make people editable.
-   *(building now)*
-3. **Fast gallery with cached thumbnails** — mostly done (paged + async +
-   LRU); extend to multi-resolution tiers (M8) for the 60 FPS / <20 ms target.
-4. **Natural-language search with CLIP** — local CLIP embeddings into the
-   existing `photos.clip_embedding vector(768)`; vector search over text.
+1. ✅ **Clustering** — DBSCAN + optional **HDBSCAN** (auto-select if installed,
+   DBSCAN fallback); `--algorithm` flag / `PHOTOSPHERE_CLUSTER_ALGORITHM`.
+2. ✅ **People page: rename + merge** (+ delete/ungroup) — people are editable.
+3. ✅ **Fast gallery with cached thumbnails** — Photos and People are both
+   virtualized (Model/View + async); People tab 228 ms → 11 ms (see
+   [PERFORMANCE.md](PERFORMANCE.md)). Multi-resolution tiers still optional (M8).
+4. **Natural-language search with CLIP** *(next)* — local CLIP embeddings into
+   the existing `photos.clip_embedding vector(768)`; vector search over text.
 
 ### M6 — Timeline
 Google-Photos-style date browsing (Year → Month → Day) over the `taken_at` we

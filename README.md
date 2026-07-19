@@ -218,13 +218,17 @@ them, and fills each face's `person_id` (creating `persons` rows):
 ```bash
 python -m scripts.cluster_faces
 python -m scripts.cluster_faces --eps 0.30 --min-samples 4
+python -m scripts.cluster_faces --algorithm hdbscan   # if hdbscan is installed
 ```
 
-Clustering uses DBSCAN over **cosine distance** on unit-normalized embeddings.
-Tuning (env-overridable): `PHOTOSPHERE_CLUSTER_EPS` (default `0.35`; lower =
-stricter grouping) and `PHOTOSPHERE_CLUSTER_MIN_SAMPLES` (default `3`; higher =
-more evidence required before forming a person). Faces DBSCAN judges ambiguous
-are left **ungrouped** (`person_id = NULL`) instead of being misfiled.
+Clustering runs over **cosine distance** on unit-normalized embeddings. The
+engine is chosen by `--algorithm` / `PHOTOSPHERE_CLUSTER_ALGORITHM`:
+`auto` (default — **HDBSCAN** if the optional `hdbscan` package is installed,
+otherwise **DBSCAN**), `hdbscan`, or `dbscan`. HDBSCAN handles clusters of
+varying density and needs no `eps`. Tuning (env-overridable):
+`PHOTOSPHERE_CLUSTER_EPS` (DBSCAN radius, default `0.35`; lower = stricter) and
+`PHOTOSPHERE_CLUSTER_MIN_SAMPLES` (min cluster size, default `3`). Ambiguous
+faces are left **ungrouped** (`person_id = NULL`) instead of being misfiled.
 
 ### Expected output
 

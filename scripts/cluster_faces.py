@@ -37,7 +37,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--min-samples", type=int, default=None,
-        help="Minimum neighbourhood size to form a person (default from settings).",
+        help="Minimum cluster/neighbourhood size to form a person (default from settings).",
+    )
+    parser.add_argument(
+        "--algorithm", choices=["auto", "hdbscan", "dbscan"], default=None,
+        help="Clustering engine (default 'auto': HDBSCAN if installed, else DBSCAN).",
     )
     parser.add_argument("--log-level", default=None, help="e.g. DEBUG or INFO.")
     return parser.parse_args(argv)
@@ -49,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     logger = setup_logging(args.log_level)
 
     logger.info("Starting face clustering")
-    summary = recluster(eps=args.eps, min_samples=args.min_samples)
+    summary = recluster(eps=args.eps, min_samples=args.min_samples, algorithm=args.algorithm)
     print(summary.render())
     return 0
 

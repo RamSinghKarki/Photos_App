@@ -120,6 +120,11 @@ class Settings:
     cluster_min_samples: int = field(
         default_factory=lambda: _env_int("PHOTOSPHERE_CLUSTER_MIN_SAMPLES", 3)
     )
+    # Clustering algorithm: "auto" (HDBSCAN if installed, else DBSCAN),
+    # "hdbscan", or "dbscan". HDBSCAN handles varying densities and needs no eps.
+    cluster_algorithm: str = field(
+        default_factory=lambda: _env_str("PHOTOSPHERE_CLUSTER_ALGORITHM", "auto").lower()
+    )
 
     # --- Thumbnails / Viewer (Module 4) -------------------------------------
     # Longest edge (px) of cached grid thumbnails. The gallery shows these, not

@@ -59,13 +59,16 @@ def _pick_cover_face(
 
 
 def recluster(
-    eps: Optional[float] = None, min_samples: Optional[int] = None
+    eps: Optional[float] = None,
+    min_samples: Optional[int] = None,
+    algorithm: Optional[str] = None,
 ) -> ClusterSummary:
     """Re-cluster all faces into people and persist the grouping.
 
     Args:
         eps: Cosine-distance radius (defaults to the configured value).
-        min_samples: Minimum neighbourhood size (defaults to configured).
+        min_samples: Minimum cluster/neighbourhood size (defaults to configured).
+        algorithm: "auto"/"hdbscan"/"dbscan" (defaults to the configured value).
 
     Returns:
         A :class:`ClusterSummary` describing the run.
@@ -73,6 +76,7 @@ def recluster(
     settings = get_settings()
     eff_eps = settings.cluster_eps if eps is None else eps
     eff_min = settings.cluster_min_samples if min_samples is None else min_samples
+    eff_algo = settings.cluster_algorithm if algorithm is None else algorithm
 
     db.apply_schema()
     summary = ClusterSummary()
@@ -84,7 +88,9 @@ def recluster(
             logger.info("No faces to cluster")
             return summary
 
-        labels = cluster_faces(embeddings, eps=eff_eps, min_samples=eff_min)
+        labels = cluster_faces(
+            embeddings, eps=eff_eps, min_samples=eff_min, algorithm=eff_algo
+        )
 
         # Group member face indices by their cluster label.
         clusters: dict[int, list[int]] = defaultdict(list)

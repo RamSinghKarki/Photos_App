@@ -11,7 +11,13 @@ import datetime as _dt
 
 import numpy as np
 
-from clustering.clusterer import NOISE_LABEL, cluster_faces, normalize_embeddings
+from clustering.clusterer import (
+    NOISE_LABEL,
+    cluster_faces,
+    normalize_embeddings,
+    resolve_algorithm,
+    _hdbscan_available,
+)
 from clustering.processor import recluster
 from database import db
 
@@ -63,6 +69,23 @@ def test_cluster_finds_three_groups() -> None:
 def test_cluster_empty_input() -> None:
     labels = cluster_faces(np.empty((0, DIM), dtype=np.float32), eps=0.35, min_samples=2)
     assert labels.shape == (0,)
+
+
+def test_resolve_algorithm() -> None:
+    # Explicit choices are honoured; "auto" depends on what's installed.
+    assert resolve_algorithm("dbscan") == "dbscan"
+    assert resolve_algorithm("hdbscan") == "hdbscan"
+    expected_auto = "hdbscan" if _hdbscan_available() else "dbscan"
+    assert resolve_algorithm("auto") == expected_auto
+    assert resolve_algorithm("") == expected_auto  # empty falls through to auto
+
+
+def test_cluster_auto_falls_back_to_dbscan_when_needed() -> None:
+    # "auto" must always produce a valid result — HDBSCAN if present, else DBSCAN.
+    embeddings, _ = _synthetic_faces()
+    labels = cluster_faces(embeddings, eps=0.35, min_samples=2, algorithm="auto")
+    clusters = {label for label in labels if label != NOISE_LABEL}
+    assert len(clusters) == 3
 
 
 # --------------------------------------------------------------------------- #
