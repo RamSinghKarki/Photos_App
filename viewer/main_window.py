@@ -15,6 +15,7 @@ from typing import Optional
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from utils.logging_setup import get_logger
+from utils.perf import timer
 from viewer import data
 from viewer.components import ComingSoonPage, Sidebar, StatusBar, TopBar
 from viewer.gpuinfo import detect_gpu
@@ -161,12 +162,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def _refresh_page(self, key: str) -> None:
         # Defensive: a transient DB issue at launch must not crash the window.
         try:
-            if key == "dashboard":
-                self._dashboard.refresh()
-            elif key == "photos":
-                self._gallery.refresh()
-            elif key == "people":
-                self._people.refresh()
+            with timer(f"tab.{key}.refresh"):
+                if key == "dashboard":
+                    self._dashboard.refresh()
+                elif key == "photos":
+                    self._gallery.refresh()
+                elif key == "people":
+                    self._people.refresh()
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not refresh page '%s': %s", key, exc)
 
@@ -178,11 +180,12 @@ class MainWindow(QtWidgets.QMainWindow):
             logger.warning("Could not load library stats: %s", exc)
 
     def _open_person(self, person_id: int) -> None:
-        people = {p["id"]: p for p in data.persons()}
-        name = people.get(person_id, {}).get("display_name")
-        self._person_detail.show_person(person_id, name)
-        self._sidebar.select("people")
-        self._stack.setCurrentIndex(self._detail_index)
+        with timer("tab.person_detail.open"):
+            people = {p["id"]: p for p in data.persons()}
+            name = people.get(person_id, {}).get("display_name")
+            self._person_detail.show_person(person_id, name)
+            self._sidebar.select("people")
+            self._stack.setCurrentIndex(self._detail_index)
 
     def _open_viewer(self, photo_ids: list[int], photo_id: int) -> None:
         if not photo_ids:
