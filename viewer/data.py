@@ -66,3 +66,9 @@ def merge_person_into(source_id: int, target_id: int) -> None:
     """Merge one person into another (faces move to the target)."""
     with db.connection() as conn, conn.cursor() as cur:
         db.merge_persons(cur, source_id, target_id)
+
+
+def set_favorite(photo_id: int, favorite: bool) -> None:
+    """Mark or unmark a photo as a favorite."""
+    with db.connection() as conn, conn.cursor() as cur:
+        db.set_favorite(cur, photo_id, favorite)

@@ -739,20 +739,83 @@ def search_photos_by_clip(
     similarity descending. ``score`` is 1 - cosine_distance in [0, 1]. Restricted
     to embeddings from ``model`` so mixed-model results never appear.
     """
+    rows = search_candidates(cur, query_vector, model, limit)
+    return [(r[0], r[1], r[2], r[3], r[5]) for r in rows]
+
+
+def search_candidates(
+    cur: PgCursor,
+    query_vector: Sequence[float],
+    model: str,
+    limit: int,
+    favorite: bool = False,
+    since: Any = None,
+    until: Any = None,
+    person_id: Optional[int] = None,
+) -> list[tuple[int, str, Optional[str], Any, bool, float]]:
+    """Return a filtered candidate pool for unified search ranking.
+
+    Rows are (id, file_path, thumbnail_path, taken_at, is_favorite, similarity)
+    ordered by CLIP similarity descending. Structured filters (favorite, date
+    range, person) are applied in SQL so ranking works on the right subset.
+    """
     vec = list(query_vector)
+    clauses = ["ce.model = %s"]
+    params: list[Any] = [vec, model]  # first %s is the SELECT similarity vector
+
+    if favorite:
+        clauses.append("p.is_favorite = TRUE")
+    if since is not None:
+        clauses.append("p.taken_at >= %s")
+        params.append(since)
+    if until is not None:
+        clauses.append("p.taken_at <= %s")
+        params.append(until)
+    if person_id is not None:
+        # EXISTS avoids row duplication when a photo has several faces of one person.
+        clauses.append("EXISTS (SELECT 1 FROM faces f WHERE f.photo_id = p.id AND f.person_id = %s)")
+        params.append(person_id)
+
+    where = " AND ".join(clauses)
+    params.append(vec)     # ORDER BY vector
+    params.append(limit)
     cur.execute(
-        """
-        SELECT p.id, p.file_path, p.thumbnail_path, p.taken_at,
-               1 - (ce.embedding <=> %s::vector) AS score
+        f"""
+        SELECT p.id, p.file_path, p.thumbnail_path, p.taken_at, p.is_favorite,
+               1 - (ce.embedding <=> %s::vector) AS sim
           FROM clip_embeddings ce
           JOIN photos p ON p.id = ce.photo_id
-         WHERE ce.model = %s
+         WHERE {where}
          ORDER BY ce.embedding <=> %s::vector
          LIMIT %s
         """,
-        (vec, model, vec, limit),
+        params,
     )
-    return [(int(r[0]), r[1], r[2], r[3], float(r[4])) for r in cur.fetchall()]
+    return [
+        (int(r[0]), r[1], r[2], r[3], bool(r[4]), float(r[5])) for r in cur.fetchall()
+    ]
+
+
+def set_favorite(cur: PgCursor, photo_id: int, favorite: bool) -> None:
+    """Mark or unmark a photo as a favorite (a user signal used by ranking)."""
+    cur.execute(
+        "UPDATE photos SET is_favorite = %s, updated_at = now() WHERE id = %s",
+        (favorite, photo_id),
+    )
+
+
+def find_person_id_by_exact_name(cur: PgCursor, name: str) -> Optional[int]:
+    """Return the person id whose display_name equals ``name`` (case-insensitive).
+
+    Returns None if there is no match or the name is ambiguous (>1 person), so
+    auto person-filtering in search never guesses.
+    """
+    cur.execute(
+        "SELECT id FROM persons WHERE lower(display_name) = lower(%s)",
+        (name.strip(),),
+    )
+    ids = [r[0] for r in cur.fetchall()]
+    return int(ids[0]) if len(ids) == 1 else None
 
 
 def recent_scan_runs(cur: PgCursor, limit: int = 5) -> list[dict[str, Any]]:

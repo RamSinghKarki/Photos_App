@@ -316,14 +316,17 @@ What works today:
 - **Photo viewer** — full-resolution image with a collapsible metadata panel
   (camera, date, dimensions, GPS, …); `←`/`→` navigate, `I` toggles the panel,
   `F11` full screen, `Esc` closes.
-- **Search (semantic)** — the **Search** tab does natural-language search over
-  your photos with CLIP ("dog on a beach", "sunset", "passport"). Import /
-  Re-index build the index (the "Indexing search" stage); queries run on a
-  background thread. Needs `open_clip_torch` + PyTorch — the tab explains how to
-  enable it if absent. The modular embedding architecture (backend interface,
-  versioned embeddings, text cache) is documented in
-  [docs/AI_PIPELINE.md](docs/AI_PIPELINE.md). The top bar still does a quick
-  filename/camera filter as you type.
+- **Search (unified, semantic)** — the **Search** tab does natural-language
+  search with CLIP ("dog on a beach", "sunset", "passport"), then **ranks across
+  signals**: CLIP similarity blended with **favorites** and **recency**, plus
+  structured filters. Typing a **person's name** narrows to their photos
+  (faces × CLIP), and a **Favorites only** toggle filters to favorites. Import /
+  Re-index build the index; queries run on a background thread. Needs
+  `open_clip_torch` + PyTorch — the tab explains how to enable it if absent.
+  Architecture in [docs/AI_PIPELINE.md](docs/AI_PIPELINE.md). The top bar still
+  does a quick filename/camera filter as you type.
+- **Favorites** — mark a photo with ♥ in the viewer (or press `F`); favorites
+  boost search ranking and can be filtered.
 - **Resumes where you left off** — window size/position, the last page you were
   on, and the gallery zoom are remembered between launches (via native
   per-user settings), and the Import dialog reopens at your last folder.

@@ -105,3 +105,66 @@ def test_search_engine_and_text_cache(clean_db, photo_tree: Path) -> None:
     calls_after_first = backend.text_calls
     engine.search("a dog on a beach")
     assert backend.text_calls == calls_after_first
+
+
+def test_favorite_filter(clean_db, photo_tree: Path) -> None:
+    scan_directory(photo_tree)
+    backend = StubBackend()
+    embed_images(backend)
+
+    with db.connection() as conn, conn.cursor() as cur:
+        cur.execute("SELECT id FROM photos WHERE thumbnail_path IS NOT NULL OR TRUE ORDER BY id LIMIT 1")
+        fav_id = cur.fetchone()[0]
+        db.set_favorite(cur, fav_id, True)
+
+    engine = SearchEngine(backend, text_cache=TextEmbeddingCache(disk_dir=None))
+    results = engine.search("anything", limit=100, filters={"favorite": True})
+    assert len(results) == 1
+    assert results[0].photo_id == fav_id and results[0].is_favorite
+
+
+def test_favorite_boosts_ranking(clean_db, photo_tree: Path, monkeypatch) -> None:
+    scan_directory(photo_tree)
+    backend = StubBackend()
+    embed_images(backend)
+
+    # Favorite the photo that ranks LAST by pure similarity, with a big boost,
+    # and confirm it climbs to the top.
+    engine = SearchEngine(backend, text_cache=TextEmbeddingCache(disk_dir=None))
+    base = engine.search("beach", limit=100)
+    last = base[-1]
+    assert not last.is_favorite
+
+    with db.connection() as conn, conn.cursor() as cur:
+        db.set_favorite(cur, last.photo_id, True)
+
+    from config.settings import get_settings
+    get_settings.cache_clear()
+    monkeypatch.setenv("PHOTOSPHERE_SEARCH_FAVORITE_BOOST", "5.0")
+    get_settings.cache_clear()
+
+    boosted = engine.search("beach", limit=100)
+    assert boosted[0].photo_id == last.photo_id   # favorite now ranks first
+    get_settings.cache_clear()
+
+
+def test_person_name_in_query_filters_by_face(clean_db, photo_tree: Path) -> None:
+    scan_directory(photo_tree)
+    backend = StubBackend()
+    embed_images(backend)
+
+    # Attach a face to exactly one photo and name that person "Ram".
+    with db.connection() as conn, conn.cursor() as cur:
+        cur.execute("SELECT id FROM photos ORDER BY id LIMIT 1")
+        ram_photo = cur.fetchone()[0]
+        fid = db.insert_face(cur, ram_photo, (0, 0, 10, 10),
+                             [0.0] * 512, det_score=0.9)
+        cur.execute("INSERT INTO persons (display_name, face_count, cover_face_id) "
+                    "VALUES ('Ram', 1, %s) RETURNING id", (fid,))
+        person_id = cur.fetchone()[0]
+        cur.execute("UPDATE faces SET person_id = %s WHERE id = %s", (person_id, fid))
+
+    engine = SearchEngine(backend, text_cache=TextEmbeddingCache(disk_dir=None))
+    results = engine.search("Ram", limit=100)   # name auto-detected -> person filter
+    assert len(results) == 1
+    assert results[0].photo_id == ram_photo

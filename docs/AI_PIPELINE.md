@@ -75,11 +75,24 @@ flowchart LR
 ```
 
 `SearchEngine.search(query, limit, filters=None)` encodes the text (cached),
-runs a pgvector top-K over `clip_embeddings` for the active model, and returns
-ranked `SearchResult`s. The `filters` argument is reserved so metadata filtering
-(date, camera, favorite, person) and blended ranking (similarity + recency +
-favorites) can be added without changing callers. Searches run on a background
-thread so the UI never blocks (the first query may load the model).
+pulls a candidate pool from pgvector, applies **structured filters**, and
+**re-ranks across signals** — this is the unified search platform:
+
+- **Filters** (`filters` dict): `favorite` (bool), `since`/`until` (dates),
+  `person_id`. Applied in SQL (`db.search_candidates`) so ranking runs on the
+  right subset.
+- **Faces × CLIP**: a person *name* typed in the query is auto-detected
+  (`find_person_id_by_exact_name`) and added as a person filter — so
+  "Ram at the beach" narrows to Ram's photos and ranks them by "at the beach".
+- **Blended ranking**: `final = similarity + w_favorite·favorite +
+  w_recency·recency` (weights `PHOTOSPHERE_SEARCH_FAVORITE_BOOST` /
+  `..._RECENCY_BOOST`). CLIP dominates; favorites and recency break ties.
+- **Extensible**: OCR text and object labels become additional filters/boosts
+  here later — the same candidate-pool → filter → rank shape, no API change.
+
+Searches run on a background thread so the UI never blocks (the first query may
+load the model). **Favorites** are a user signal: the photo viewer's ♥ toggle
+(`F`) sets `photos.is_favorite`, which feeds ranking.
 
 ### Storage
 

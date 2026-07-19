@@ -68,10 +68,13 @@ active learning, personal classifier) are queued there.
 - ⬜ **UI polish** — skeleton loading, transitions, drag-and-drop, richer context
   menus, notifications, search suggestions.
 
-### Phase B — Unified AI Search platform (next)
-Extend the search engine (already modular: CLIP backend + `filters` hook) into
-one system where CLIP + metadata + faces + OCR + objects all contribute, with
-blended ranking (similarity + recency + favorites + people).
+### Phase B — Unified AI Search platform ✅
+The search engine now ranks across signals: CLIP similarity blended with
+**favorites** and **recency**, with structured **filters** (favorite / date /
+person) and **person-name auto-detection** (faces × CLIP). Favorites are a real
+user signal (♥ in the viewer). OCR/object labels plug into the same
+candidate → filter → rank shape with no API change. See
+[AI_PIPELINE.md](AI_PIPELINE.md).
 
 ### Then per the recommended order
 OCR → object detection → similar-image → duplicates → timeline → albums →

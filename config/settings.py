@@ -150,6 +150,14 @@ class Settings:
     clip_batch_size: int = field(default_factory=lambda: _env_int("PHOTOSPHERE_CLIP_BATCH", 64))
     # Bump when re-embedding with the same model name should be forced.
     clip_model_version: int = field(default_factory=lambda: _env_int("PHOTOSPHERE_CLIP_VERSION", 1))
+    # Unified-search ranking weights: final = similarity + w_fav*favorite +
+    # w_recency*recency. Small so CLIP similarity dominates and these break ties.
+    search_favorite_boost: float = field(
+        default_factory=lambda: float(_env_str("PHOTOSPHERE_SEARCH_FAVORITE_BOOST", "0.15"))
+    )
+    search_recency_boost: float = field(
+        default_factory=lambda: float(_env_str("PHOTOSPHERE_SEARCH_RECENCY_BOOST", "0.05"))
+    )
 
     # --- Thumbnails / Viewer (Module 4) -------------------------------------
     # Longest edge (px) of cached grid thumbnails. The gallery shows these, not

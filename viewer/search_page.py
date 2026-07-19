@@ -24,14 +24,15 @@ class _SearchWorker(QtCore.QThread):
     done = QtCore.Signal(list)     # list[SearchResult]
     failed = QtCore.Signal(str)
 
-    def __init__(self, engine, query: str) -> None:
+    def __init__(self, engine, query: str, filters: dict) -> None:
         super().__init__()
         self._engine = engine
         self._query = query
+        self._filters = filters
 
     def run(self) -> None:
         try:
-            self.done.emit(self._engine.search(self._query))
+            self.done.emit(self._engine.search(self._query, filters=self._filters))
         except Exception as exc:  # noqa: BLE001
             logger.exception("Search failed")
             self.failed.emit(str(exc))
@@ -64,7 +65,10 @@ class SearchPage(QtWidgets.QWidget):
         button = QtWidgets.QPushButton("Search")
         button.setObjectName("Primary")
         button.clicked.connect(self._run)
+        self._favorites_only = QtWidgets.QCheckBox("Favorites only")
+        self._favorites_only.toggled.connect(self._run)
         bar.addWidget(self._input, 1)
+        bar.addWidget(self._favorites_only)
         bar.addWidget(button)
         layout.addLayout(bar)
 
@@ -110,7 +114,8 @@ class SearchPage(QtWidgets.QWidget):
             return
 
         self._status.setText(f"Searching for “{query}”…")
-        self._worker = _SearchWorker(self._engine, query)
+        filters = {"favorite": self._favorites_only.isChecked()}
+        self._worker = _SearchWorker(self._engine, query, filters)
         self._worker.done.connect(self._on_results)
         self._worker.failed.connect(self._on_failed)
         self._worker.start()

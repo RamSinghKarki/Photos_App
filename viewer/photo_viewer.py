@@ -98,17 +98,21 @@ class PhotoViewer(QtWidgets.QDialog):
         nav = QtWidgets.QHBoxLayout()
         prev_btn = QtWidgets.QPushButton("←  Prev")
         next_btn = QtWidgets.QPushButton("Next  →")
+        self._fav_btn = QtWidgets.QPushButton("♡ Favorite (F)")
         toggle_btn = QtWidgets.QPushButton("Info (I)")
         prev_btn.clicked.connect(self.show_prev)
         next_btn.clicked.connect(self.show_next)
+        self._fav_btn.clicked.connect(self.toggle_favorite)
         toggle_btn.clicked.connect(self.toggle_panel)
         self._counter = QtWidgets.QLabel("")
         self._counter.setObjectName("Muted")
+        self._is_favorite = False
         nav.setContentsMargins(12, 8, 12, 8)
         nav.addWidget(prev_btn)
         nav.addWidget(next_btn)
         nav.addWidget(self._counter)
         nav.addStretch(1)
+        nav.addWidget(self._fav_btn)
         nav.addWidget(toggle_btn)
 
         image_side.addWidget(self._image, 1)
@@ -136,6 +140,21 @@ class PhotoViewer(QtWidgets.QDialog):
     def toggle_panel(self) -> None:
         self._panel.setVisible(not self._panel.isVisible())
 
+    def toggle_favorite(self) -> None:
+        """Flip the current photo's favorite flag (a user signal for ranking)."""
+        if not self._ids:
+            return
+        photo_id = self._ids[self._index]
+        self._is_favorite = not self._is_favorite
+        data.set_favorite(photo_id, self._is_favorite)
+        self._update_favorite_button()
+
+    def _update_favorite_button(self) -> None:
+        self._fav_btn.setText("♥ Favorited (F)" if self._is_favorite else "♡ Favorite (F)")
+        self._fav_btn.setStyleSheet(
+            f"color: {theme.ERROR};" if self._is_favorite else ""
+        )
+
     def _load_current(self) -> None:
         photo_id = self._ids[self._index]
         detail = data.photo_detail(photo_id)
@@ -143,6 +162,8 @@ class PhotoViewer(QtWidgets.QDialog):
             return
         self._counter.setText(f"{self._index + 1} / {len(self._ids)}")
         self._panel.show_detail(detail)
+        self._is_favorite = bool(detail.get("is_favorite"))
+        self._update_favorite_button()
 
         pixmap = QtGui.QPixmap(detail["file_path"])
         self._source_pixmap = pixmap if not pixmap.isNull() else None
@@ -172,6 +193,8 @@ class PhotoViewer(QtWidgets.QDialog):
             self.show_prev()
         elif key == QtCore.Qt.Key.Key_I:
             self.toggle_panel()
+        elif key == QtCore.Qt.Key.Key_F:
+            self.toggle_favorite()
         elif key == QtCore.Qt.Key.Key_F11:
             self.setWindowState(self.windowState() ^ QtCore.Qt.WindowState.WindowFullScreen)
         elif key == QtCore.Qt.Key.Key_Escape:

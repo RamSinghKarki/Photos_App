@@ -32,7 +32,9 @@ class SearchResult:
     file_path: str
     thumbnail_path: Optional[str]
     taken_at: Any
-    score: float
+    score: float                 # blended final score
+    similarity: float = 0.0      # raw CLIP similarity
+    is_favorite: bool = False
 
     def as_grid_row(self) -> tuple[int, str, Optional[str], Any]:
         """Adapt to the (id, path, thumbnail, taken_at) row the gallery expects."""
@@ -68,21 +70,63 @@ class SearchEngine:
         self,
         query: str,
         limit: int = 200,
-        filters: Optional[dict] = None,  # reserved for future metadata filtering
+        filters: Optional[dict] = None,
     ) -> list[SearchResult]:
-        """Return up to ``limit`` photos most similar to ``query``."""
+        """Return up to ``limit`` photos for ``query``, ranked across signals.
+
+        ``filters`` may contain: ``favorite`` (bool), ``since`` / ``until``
+        (datetimes), ``person_id`` (int). A person name typed in the query is
+        auto-detected and added as a person filter — combining CLIP + faces.
+        The final score blends CLIP similarity with a favorite boost and a
+        recency boost (weights from settings).
+        """
         text = (query or "").strip()
         if not text:
             return []
+        filters = dict(filters or {})
 
         vector = self.encode_query(text)
-        with timer("search.vector_query"), db.connection() as conn, conn.cursor() as cur:
-            rows = db.search_photos_by_clip(cur, vector.tolist(), self._backend.model_id, limit)
+        settings = get_settings()
 
-        # `filters` and richer ranking (date/favorite/recency blends) will be
-        # applied here later; today results are pure cosine similarity.
-        return [
-            SearchResult(photo_id=r[0], file_path=r[1], thumbnail_path=r[2],
-                         taken_at=r[3], score=r[4])
-            for r in rows
-        ]
+        with timer("search.vector_query"), db.connection() as conn, conn.cursor() as cur:
+            # Combine face signal: if a query word names a known person, restrict.
+            if filters.get("person_id") is None:
+                for token in text.split():
+                    pid = db.find_person_id_by_exact_name(cur, token)
+                    if pid is not None:
+                        filters["person_id"] = pid
+                        break
+
+            # A candidate pool larger than `limit` so ranking can reorder.
+            pool = max(limit * 4, 200)
+            rows = db.search_candidates(
+                cur, vector.tolist(), self._backend.model_id, pool,
+                favorite=bool(filters.get("favorite", False)),
+                since=filters.get("since"),
+                until=filters.get("until"),
+                person_id=filters.get("person_id"),
+            )
+
+        ranked = self._rank(rows, settings.search_favorite_boost, settings.search_recency_boost)
+        return ranked[:limit]
+
+    @staticmethod
+    def _rank(rows, favorite_boost: float, recency_boost: float) -> list[SearchResult]:
+        """Blend CLIP similarity with favorite + recency into a final score."""
+        # Recency normalized across the candidate pool (newest -> 1.0).
+        times = [r[3].timestamp() for r in rows if r[3] is not None]
+        t_min, t_max = (min(times), max(times)) if times else (0.0, 0.0)
+        span = (t_max - t_min) or 1.0
+
+        results = []
+        for photo_id, path, thumb, taken_at, is_fav, sim in rows:
+            recency = ((taken_at.timestamp() - t_min) / span) if taken_at is not None else 0.0
+            score = sim + (favorite_boost if is_fav else 0.0) + recency_boost * recency
+            results.append(
+                SearchResult(
+                    photo_id=photo_id, file_path=path, thumbnail_path=thumb,
+                    taken_at=taken_at, score=score, similarity=sim, is_favorite=is_fav,
+                )
+            )
+        results.sort(key=lambda r: r.score, reverse=True)
+        return results
