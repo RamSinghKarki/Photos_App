@@ -29,6 +29,15 @@ logger = get_logger("viewer.tasks")
 DetectorFactory = Callable[[], Optional[FaceDetector]]
 
 
+class PipelineCancelled(Exception):
+    """Raised cooperatively to unwind the pipeline when the user hits Stop.
+
+    Because every stage is idempotent and commits in batches, stopping loses at
+    most the current uncommitted batch; a later run continues from where this
+    one left off.
+    """
+
+
 def _default_detector() -> Optional[FaceDetector]:
     """Build the real InsightFace detector, or None if it isn't installed."""
     try:
@@ -48,6 +57,7 @@ class PipelineWorker(QtCore.QThread):
     step_changed = QtCore.Signal(str)      # human-readable current stage
     progress = QtCore.Signal(int, int)     # (done, total); total == 0 == indeterminate
     finished_ok = QtCore.Signal(str)       # one-line result summary
+    cancelled = QtCore.Signal(str)         # user pressed Stop; partial summary
     failed = QtCore.Signal(str)            # error message
 
     def __init__(
@@ -60,6 +70,11 @@ class PipelineWorker(QtCore.QThread):
         self._root = root
         self._run_ai = run_ai
         self._detector_factory = detector_factory or _default_detector
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        """Request a cooperative stop; takes effect at the next progress tick."""
+        self._cancelled = True
 
     def run(self) -> None:  # noqa: D401 - QThread entry point
         try:
@@ -89,10 +104,16 @@ class PipelineWorker(QtCore.QThread):
 
             self.step_changed.emit("Done")
             self.finished_ok.emit("  ·  ".join(parts) if parts else "Nothing to do")
+        except PipelineCancelled:
+            logger.info("Pipeline stopped by user")
+            self.cancelled.emit("  ·  ".join(parts) if parts else "Stopped")
         except Exception as exc:  # noqa: BLE001 - surface any failure to the UI
             logger.exception("Pipeline failed")
             self.failed.emit(str(exc))
 
     def _on_progress(self, done: int, total: int) -> None:
-        # Runs on the worker thread; emit() marshals to the GUI thread safely.
-        self.progress.emit(done, total)
+        # Runs on the worker thread. Raising here unwinds the current stage;
+        # committed batches persist, so a later run resumes from here.
+        if self._cancelled:
+            raise PipelineCancelled()
+        self.progress.emit(done, total)  # emit() marshals to the GUI thread safely

@@ -24,6 +24,16 @@ def _human_bytes(num: float) -> str:
     return f"{num:.1f} PB"
 
 
+def format_duration(seconds: float) -> str:
+    """Format a duration as M:SS, or H:MM:SS past an hour."""
+    total = max(0, int(seconds))
+    hours, rem = divmod(total, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
+
+
 def make_card(child: QtWidgets.QWidget) -> QtWidgets.QFrame:
     """Wrap a widget in a rounded surface 'card' frame."""
     frame = QtWidgets.QFrame()
@@ -103,6 +113,8 @@ class TopBar(QtWidgets.QFrame):
     search_changed = QtCore.Signal(str)
     import_requested = QtCore.Signal()
     reindex_requested = QtCore.Signal()
+    stop_requested = QtCore.Signal()
+    continue_requested = QtCore.Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -125,6 +137,14 @@ class TopBar(QtWidgets.QFrame):
         self.search.textChanged.connect(self.search_changed.emit)
         self.search.setMaximumWidth(520)
 
+        self.continue_btn = QtWidgets.QPushButton("Continue")
+        self.continue_btn.clicked.connect(self.continue_requested.emit)
+        self.continue_btn.setVisible(False)
+
+        self.stop_btn = QtWidgets.QPushButton("Stop")
+        self.stop_btn.clicked.connect(self._on_stop_clicked)
+        self.stop_btn.setVisible(False)
+
         self.reindex_btn = QtWidgets.QPushButton("Re-index")
         self.reindex_btn.clicked.connect(self.reindex_requested.emit)
 
@@ -137,13 +157,39 @@ class TopBar(QtWidgets.QFrame):
         layout.addSpacing(12)
         layout.addWidget(self.search, 1)
         layout.addStretch(1)
+        layout.addWidget(self.continue_btn)
+        layout.addWidget(self.stop_btn)
         layout.addWidget(self.reindex_btn)
         layout.addWidget(self.import_btn)
 
-    def set_busy(self, busy: bool) -> None:
-        """Disable the import/re-index buttons while a pipeline is running."""
-        self.import_btn.setEnabled(not busy)
-        self.reindex_btn.setEnabled(not busy)
+    def _on_stop_clicked(self) -> None:
+        # Give immediate feedback; the worker stops at the next progress tick.
+        self.stop_btn.setEnabled(False)
+        self.stop_btn.setText("Stopping…")
+        self.stop_requested.emit()
+
+    def set_running(self) -> None:
+        """Pipeline started: show Stop, hide Continue, disable import/re-index."""
+        self.import_btn.setEnabled(False)
+        self.reindex_btn.setEnabled(False)
+        self.continue_btn.setVisible(False)
+        self.stop_btn.setVisible(True)
+        self.stop_btn.setEnabled(True)
+        self.stop_btn.setText("Stop")
+
+    def set_stopped(self) -> None:
+        """Pipeline stopped by user: offer Continue to resume."""
+        self.import_btn.setEnabled(True)
+        self.reindex_btn.setEnabled(True)
+        self.stop_btn.setVisible(False)
+        self.continue_btn.setVisible(True)
+
+    def set_idle(self) -> None:
+        """No pipeline running (finished or never started)."""
+        self.import_btn.setEnabled(True)
+        self.reindex_btn.setEnabled(True)
+        self.stop_btn.setVisible(False)
+        self.continue_btn.setVisible(False)
 
     def focus_search(self) -> None:
         """Move keyboard focus to the search field (Ctrl+F)."""
@@ -171,9 +217,11 @@ class StatusBar(QtWidgets.QFrame):
         # Job progress (hidden until a pipeline runs).
         self._step = self._item("")
         self._progress = QtWidgets.QProgressBar()
-        self._progress.setFixedWidth(160)
+        self._progress.setFixedWidth(150)
         self._progress.setTextVisible(False)
         self._progress.setVisible(False)
+        self._clock = self._item("")           # elapsed + ETA
+        self._clock.setVisible(False)
 
         self._backend = self._item("PostgreSQL • pgvector")
         self._gpu = self._item("GPU: —")
@@ -185,10 +233,22 @@ class StatusBar(QtWidgets.QFrame):
         layout.addStretch(1)
         layout.addWidget(self._step)
         layout.addWidget(self._progress)
+        layout.addWidget(self._clock)
         layout.addStretch(1)
         layout.addWidget(self._backend)
         layout.addWidget(self._gpu)
         layout.addWidget(self._ai)
+
+        # A 1-second tick keeps the elapsed clock moving between progress calls.
+        self._elapsed = QtCore.QElapsedTimer()   # overall pipeline time
+        self._stage_elapsed = QtCore.QElapsedTimer()  # current stage, for ETA
+        self._last_done = 0
+        self._last_total = 0
+        self._active = False
+        self._stage = ""
+        self._tick_timer = QtCore.QTimer(self)
+        self._tick_timer.setInterval(1000)
+        self._tick_timer.timeout.connect(self._refresh_clock)
 
     @staticmethod
     def _item(text: str) -> QtWidgets.QLabel:
@@ -208,32 +268,60 @@ class StatusBar(QtWidgets.QFrame):
         self._gpu.setText(text)
 
     def set_step(self, step: Optional[str]) -> None:
-        """Show/clear the current pipeline stage and toggle the progress bar."""
+        """Show/clear the current pipeline stage and toggle the progress + clock."""
         if step:
+            self._stage = step
             self._step.setText(step)
             self._ai.setText(f"AI: {step}")
             self._progress.setVisible(True)
+            self._clock.setVisible(True)
+            self._last_done = 0
+            self._last_total = 0
+            self._stage_elapsed.restart()      # ETA is measured per stage
+            if not self._active:               # overall clock starts once
+                self._elapsed.restart()
+                self._active = True
+                self._tick_timer.start()
+            self._refresh_clock()
         else:
+            self._active = False
+            self._tick_timer.stop()
             self._step.setText("")
             self._ai.setText("AI: Idle")
             self._progress.setVisible(False)
             self._progress.reset()
+            self._clock.setVisible(False)
+            self._clock.setText("")
 
     def set_progress(self, done: int, total: int) -> None:
         """Update the progress bar; total == 0 shows an indeterminate (busy) bar."""
+        self._last_done = done
+        self._last_total = total
         if total <= 0:
             self._progress.setRange(0, 0)  # busy indicator
-            self._step_suffix(done, None)
+            self._step.setText(f"{self._stage}  {done}")
         else:
             self._progress.setRange(0, total)
             self._progress.setValue(done)
-            self._step_suffix(done, total)
+            pct = int(done * 100 / total) if total else 0
+            self._step.setText(f"{self._stage}  {done}/{total}  ({pct}%)")
+        self._refresh_clock()
 
-    def _step_suffix(self, done: int, total: Optional[int]) -> None:
-        base = self._step.text().split("  ")[0]
-        if not base:
+    def _refresh_clock(self) -> None:
+        """Update the elapsed time and (when possible) the ETA."""
+        if not self._active:
             return
-        self._step.setText(f"{base}  {done}/{total}" if total else f"{base}  {done}")
+        elapsed_s = self._elapsed.elapsed() / 1000.0
+        text = f"⏱ {format_duration(elapsed_s)}"
+
+        # ETA from the current stage's throughput.
+        if self._last_total > 0 and self._last_done > 0:
+            stage_s = self._stage_elapsed.elapsed() / 1000.0
+            rate = self._last_done / stage_s if stage_s > 0 else 0.0
+            if rate > 0:
+                remaining = (self._last_total - self._last_done) / rate
+                text += f"   ETA {format_duration(remaining)}"
+        self._clock.setText(text)
 
 
 class PersonCard(QtWidgets.QFrame):

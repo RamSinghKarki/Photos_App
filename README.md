@@ -272,8 +272,11 @@ What works today:
 - **Fluent dark UI** — soft surfaces, drawn line-art icons (no emoji), pill
   search, accent-highlighted navigation.
 - **Background pipeline** — Import / Re-index run off the UI thread with a
-  progress bar and per-stage status; the **GPU badge** in the status bar shows
-  whether face detection will use CUDA or CPU.
+  progress bar, **percent, elapsed timer and ETA**, and per-stage status; the
+  **GPU badge** shows whether face detection will use CUDA or CPU.
+- **Stop / Continue** — **Stop** cancels a running pipeline cleanly (at the next
+  progress tick); because every stage is idempotent, **Continue** resumes from
+  exactly where it stopped — no work is repeated beyond the last partial batch.
 - **Dashboard** — stat tiles (photos, faces, people, storage) and recent scans.
 - **Photos** — a virtualized grid with **incremental paging** (loads a page at a
   time as you scroll) and **off-thread thumbnail decoding**, so it stays smooth

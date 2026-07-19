@@ -52,12 +52,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self._state = AppState()
         self._current_page = "dashboard"
         self._worker: Optional[PipelineWorker] = None
+        self._last_root: Optional[Path] = None
 
         # --- Top bar ---
         self._topbar = TopBar()
         self._topbar.search_changed.connect(self._on_search)
         self._topbar.import_requested.connect(self._on_import)
         self._topbar.reindex_requested.connect(self._on_reindex)
+        self._topbar.stop_requested.connect(self._on_stop)
+        self._topbar.continue_requested.connect(self._on_continue)
 
         # --- Sidebar ---
         self._sidebar = Sidebar()
@@ -205,30 +208,46 @@ class MainWindow(QtWidgets.QMainWindow):
         # Re-run thumbnails + AI over already-imported photos (no new scan).
         self._start_pipeline(root=None)
 
+    def _on_stop(self) -> None:
+        if self._worker is not None and self._worker.isRunning():
+            self._worker.cancel()
+
+    def _on_continue(self) -> None:
+        # Resume: re-run the same target. Every stage is idempotent, so it
+        # picks up exactly where Stop left off.
+        self._start_pipeline(self._last_root)
+
     def _start_pipeline(self, root: Optional[Path]) -> None:
         if self._worker is not None and self._worker.isRunning():
             return  # a pipeline is already running
-        self._topbar.set_busy(True)
+        self._last_root = root
+        self._topbar.set_running()
         self._worker = PipelineWorker(root=root, run_ai=True)
         self._worker.step_changed.connect(self._status.set_step)
         self._worker.progress.connect(self._status.set_progress)
         self._worker.finished_ok.connect(self._on_pipeline_done)
+        self._worker.cancelled.connect(self._on_pipeline_stopped)
         self._worker.failed.connect(self._on_pipeline_failed)
         self._worker.start()
 
     def _on_pipeline_done(self, summary: str) -> None:
         logger.info("Pipeline finished: %s", summary)
-        self._finish_pipeline()
+        self._status.set_step(None)
+        self._topbar.set_idle()
+        self.refresh_all()
         self.show_page("photos")
 
-    def _on_pipeline_failed(self, message: str) -> None:
-        self._finish_pipeline()
-        QtWidgets.QMessageBox.warning(self, "Pipeline error", message)
-
-    def _finish_pipeline(self) -> None:
+    def _on_pipeline_stopped(self, summary: str) -> None:
+        logger.info("Pipeline stopped: %s", summary)
         self._status.set_step(None)
-        self._topbar.set_busy(False)
+        self._topbar.set_stopped()   # offer Continue
         self.refresh_all()
+
+    def _on_pipeline_failed(self, message: str) -> None:
+        self._status.set_step(None)
+        self._topbar.set_idle()
+        self.refresh_all()
+        QtWidgets.QMessageBox.warning(self, "Pipeline error", message)
 
     # -- shortcuts -----------------------------------------------------------
     def _install_shortcuts(self) -> None:

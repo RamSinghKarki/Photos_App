@@ -77,3 +77,29 @@ def test_reindex_without_scan(qapp, clean_db, photo_tree: Path) -> None:
     assert steps[0] == "Building thumbnails"
     with db.connection() as conn, conn.cursor() as cur:
         assert db.library_stats(cur)["faces"] == 4
+
+
+def test_cancel_raises_at_progress(qapp) -> None:
+    from viewer.tasks import PipelineCancelled, PipelineWorker
+
+    worker = PipelineWorker(root=None, detector_factory=lambda: _StubDetector())
+    worker.cancel()
+    with pytest.raises(PipelineCancelled):
+        worker._on_progress(1, 10)  # a cancelled worker stops at the next tick
+
+
+def test_cancelled_run_emits_cancelled(qapp, clean_db, photo_tree: Path) -> None:
+    from viewer.tasks import PipelineWorker
+
+    worker = PipelineWorker(
+        root=photo_tree, run_ai=True, detector_factory=lambda: _StubDetector()
+    )
+    finished: list[str] = []
+    stopped: list[str] = []
+    worker.finished_ok.connect(finished.append)
+    worker.cancelled.connect(stopped.append)
+
+    worker.cancel()   # stop as soon as the first progress tick fires
+    worker.run()
+
+    assert stopped and not finished   # ended via the cancelled path, not finished_ok
