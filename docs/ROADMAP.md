@@ -45,8 +45,13 @@ The immediate milestone, in order:
 3. ✅ **Fast gallery with cached thumbnails** — Photos and People are both
    virtualized (Model/View + async); People tab 228 ms → 11 ms (see
    [PERFORMANCE.md](PERFORMANCE.md)). Multi-resolution tiers still optional (M8).
-4. **Natural-language search with CLIP** *(next)* — local CLIP embeddings into
-   the existing `photos.clip_embedding vector(768)`; vector search over text.
+4. ✅ **AI Search subsystem with CLIP** — modular embedding backend interface
+   (CLIP first; SigLIP/others pluggable), incremental + batched + GPU embedding
+   in the background pipeline, versioned `clip_embeddings` table, text-embedding
+   cache, and a Search tab. See [AI_PIPELINE.md](AI_PIPELINE.md).
+
+**M5 complete.** Next per the recommended order: OCR → object detection →
+timeline → albums/favorites → duplicates → map → settings → backup → installer.
 
 ### M6 — Timeline
 Google-Photos-style date browsing (Year → Month → Day) over the `taken_at` we

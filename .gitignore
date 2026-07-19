@@ -9,6 +9,7 @@ venv/
 # Generated artifacts — never commit user data or caches
 /logs/*
 !/logs/.gitkeep
+/cache/
 /data/thumbnails/*
 !/data/thumbnails/.gitkeep
 /data/face_crops/*

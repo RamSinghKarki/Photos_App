@@ -13,6 +13,7 @@ Search, OCR, and more can be added without redesigning the schema.
 | [docs/INSTALL.md](docs/INSTALL.md) | Install & first run (Docker or native, GPU setup) |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How it all fits together — layers, data flow, threading, scale |
 | [docs/DATABASE.md](docs/DATABASE.md) | Schema reference (tables, indexes, helpers, queries) |
+| [docs/AI_PIPELINE.md](docs/AI_PIPELINE.md) | Face + CLIP search pipeline; the modular embedding architecture |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Contributor guide — layout, tests, conventions, adding a module |
 | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | How to profile (PHOTOSPHERE_PERF) + the measured optimizations |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Path to v1.0 — milestones, targets, decisions |
@@ -307,8 +308,14 @@ What works today:
 - **Photo viewer** — full-resolution image with a collapsible metadata panel
   (camera, date, dimensions, GPS, …); `←`/`→` navigate, `I` toggles the panel,
   `F11` full screen, `Esc` closes.
-- **Search** — the top bar filters the gallery by filename/camera as you type
-  (debounced). Semantic search is a later module.
+- **Search (semantic)** — the **Search** tab does natural-language search over
+  your photos with CLIP ("dog on a beach", "sunset", "passport"). Import /
+  Re-index build the index (the "Indexing search" stage); queries run on a
+  background thread. Needs `open_clip_torch` + PyTorch — the tab explains how to
+  enable it if absent. The modular embedding architecture (backend interface,
+  versioned embeddings, text cache) is documented in
+  [docs/AI_PIPELINE.md](docs/AI_PIPELINE.md). The top bar still does a quick
+  filename/camera filter as you type.
 - **Resumes where you left off** — window size/position, the last page you were
   on, and the gallery zoom are remembered between launches (via native
   per-user settings), and the Import dialog reopens at your last folder.

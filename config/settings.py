@@ -87,6 +87,8 @@ class Settings:
     thumbnails_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "data" / "thumbnails")
     face_crops_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "data" / "face_crops")
     logs_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "logs")
+    # Regenerable caches (text-embedding cache, etc.) — never authoritative.
+    cache_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "cache")
 
     log_level: str = field(default_factory=lambda: _env_str("PHOTOSPHERE_LOG_LEVEL", "INFO"))
     scan_batch_size: int = field(default_factory=lambda: _env_int("PHOTOSPHERE_SCAN_BATCH_SIZE", 200))
@@ -126,6 +128,23 @@ class Settings:
         default_factory=lambda: _env_str("PHOTOSPHERE_CLUSTER_ALGORITHM", "auto").lower()
     )
 
+    # --- AI Search (CLIP) ---------------------------------------------------
+    # open_clip model + pretrained tag. ViT-B-32/openai is a light 512-d model.
+    clip_model: str = field(default_factory=lambda: _env_str("PHOTOSPHERE_CLIP_MODEL", "ViT-B-32"))
+    clip_pretrained: str = field(
+        default_factory=lambda: _env_str("PHOTOSPHERE_CLIP_PRETRAINED", "openai")
+    )
+    # Embedding dimension of the chosen model. MUST match the clip_embeddings
+    # table's vector(...) size in schema.sql (512 for ViT-B-32). Changing the
+    # model to a different dimension requires recreating that table.
+    clip_embedding_dim: int = field(
+        default_factory=lambda: _env_int("PHOTOSPHERE_CLIP_DIM", 512)
+    )
+    # Images per GPU batch — RTX cards are far more efficient batched.
+    clip_batch_size: int = field(default_factory=lambda: _env_int("PHOTOSPHERE_CLIP_BATCH", 64))
+    # Bump when re-embedding with the same model name should be forced.
+    clip_model_version: int = field(default_factory=lambda: _env_int("PHOTOSPHERE_CLIP_VERSION", 1))
+
     # --- Thumbnails / Viewer (Module 4) -------------------------------------
     # Longest edge (px) of cached grid thumbnails. The gallery shows these, not
     # originals, so browsing stays fast on large libraries.
@@ -146,7 +165,10 @@ class Settings:
         Called explicitly by entry points (not at import time) so that merely
         importing settings has no filesystem side effects.
         """
-        for directory in (self.data_dir, self.thumbnails_dir, self.face_crops_dir, self.logs_dir):
+        for directory in (
+            self.data_dir, self.thumbnails_dir, self.face_crops_dir, self.logs_dir,
+            self.cache_dir / "clip" / "text",
+        ):
             directory.mkdir(parents=True, exist_ok=True)
 
 

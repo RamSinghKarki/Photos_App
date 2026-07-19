@@ -21,6 +21,7 @@ from viewer.components import ComingSoonPage, Sidebar, StatusBar, TopBar
 from viewer.gpuinfo import detect_gpu
 from viewer.pages import DashboardPage, GalleryPage, PeoplePage, PersonDetailPage
 from viewer.photo_viewer import PhotoViewer
+from viewer.search_page import SearchPage
 from viewer.state import AppState
 from viewer.tasks import PipelineWorker
 
@@ -30,7 +31,6 @@ logger = get_logger("viewer.main")
 _PLANNED_NOTES = {
     "timeline": "Timeline — planned. Will group photos by year and month.",
     "videos": "Videos — planned. Video indexing is a future module.",
-    "search": "Semantic Search — planned. Use the top search bar for basic search today.",
     "objects": "Object Detection — planned AI module.",
     "similar": "Similar Photos — planned AI module.",
     "albums": "Albums — planned organization module.",
@@ -73,7 +73,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self._gallery = GalleryPage()
         self._people = PeoplePage()
         self._person_detail = PersonDetailPage()
+        self._search = SearchPage()
 
+        self._search.photo_activated.connect(
+            lambda pid: self._open_viewer(self._search.current_photo_ids(), pid)
+        )
         self._gallery.photo_activated.connect(
             lambda pid: self._open_viewer(self._gallery.current_photo_ids(), pid)
         )
@@ -92,6 +96,7 @@ class MainWindow(QtWidgets.QMainWindow):
             ("dashboard", self._dashboard),
             ("photos", self._gallery),
             ("people", self._people),
+            ("search", self._search),
         ):
             self._page_keys[key] = self._stack.addWidget(widget)
         self._detail_index = self._stack.addWidget(self._person_detail)
@@ -156,6 +161,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if key in self._page_keys:
             self._stack.setCurrentIndex(self._page_keys[key])
             self._refresh_page(key)
+            if key == "search":
+                self._search.focus_input()
         elif key in self._coming:
             self._stack.setCurrentIndex(self._coming[key])
 

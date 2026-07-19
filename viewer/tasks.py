@@ -51,6 +51,13 @@ def _default_detector() -> Optional[FaceDetector]:
         return None
 
 
+def _default_clip_backend():
+    """Build the real CLIP backend, or None if the runtime isn't installed."""
+    from search.clip_backend import default_backend
+
+    return default_backend()
+
+
 class PipelineWorker(QtCore.QThread):
     """Runs scan/thumbnail/face/cluster stages and emits progress."""
 
@@ -66,12 +73,14 @@ class PipelineWorker(QtCore.QThread):
         run_ai: bool = True,
         photo_ids: Optional[list[int]] = None,
         detector_factory: Optional[DetectorFactory] = None,
+        clip_factory: Optional[Callable[[], object]] = None,
     ) -> None:
         super().__init__()
         self._root = root
         self._run_ai = run_ai
         self._photo_ids = photo_ids
         self._detector_factory = detector_factory or _default_detector
+        self._clip_factory = clip_factory or _default_clip_backend
         self._cancelled = False
 
     def cancel(self) -> None:
@@ -123,6 +132,15 @@ class PipelineWorker(QtCore.QThread):
                     parts.append(f"{clusters.persons} people")
                 else:
                     parts.append("faces skipped (no model)")
+
+                # Semantic-search index (optional; skipped if CLIP not installed).
+                clip_backend = self._clip_factory()
+                if clip_backend is not None:
+                    from search.embedding_engine import embed_images
+
+                    self.step_changed.emit("Indexing search")
+                    emb = embed_images(clip_backend, on_progress=self._on_progress)
+                    parts.append(f"+{emb.embedded} search")
 
             self.step_changed.emit("Done")
             self.finished_ok.emit("  ·  ".join(parts) if parts else "Nothing to do")

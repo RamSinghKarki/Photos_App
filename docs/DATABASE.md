@@ -128,6 +128,22 @@ via the FK) and recreated each run.
 
 ---
 
+## `clip_embeddings`
+
+Per-photo CLIP image embedding for semantic search, versioned by model.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `photo_id` | bigint PK FK → photos | `ON DELETE CASCADE`; one active model per photo |
+| `embedding` | vector(512) | L2-normalized CLIP image vector (ViT-B-32) |
+| `model` | text | e.g. `ViT-B-32/openai` |
+| `version` | integer | bump to force re-embedding with the same model |
+| `created_at`, `updated_at` | timestamptz | |
+
+**Indexes:** `(model, version)` for the incremental "needs embedding" query, and
+an `ivfflat` cosine index on `embedding`. The vector size is fixed at 512
+(ViT-B-32); a different-dimension model requires recreating this table.
+
 ## `scan_runs`
 
 An audit log of each scan, powering the dashboard's recent-activity feed and the
@@ -161,6 +177,8 @@ Grouped by area — this is the full public surface the rest of the app uses.
   `count_photos_needing_thumbnail`.
 - **UI reads:** `library_stats`, `list_photo_grid`, `get_photo_detail`,
   `recent_scan_runs`.
+- **CLIP / search:** `stream_photos_needing_clip`, `count_photos_needing_clip`,
+  `upsert_clip_embedding`, `count_clip_embeddings`, `search_photos_by_clip`.
 - **Scan runs:** `start_scan_run`, `finish_scan_run`.
 
 ---

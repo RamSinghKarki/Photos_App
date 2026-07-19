@@ -548,6 +548,100 @@ def list_persons_with_cover(cur: PgCursor) -> list[dict[str, Any]]:
     ]
 
 
+# ---------------------------------------------------------------------------
+# CLIP / semantic search helpers
+# ---------------------------------------------------------------------------
+def stream_photos_needing_clip(
+    conn: PgConnection, model: str, version: int, limit: Optional[int] = None
+) -> Iterator[tuple[int, str]]:
+    """Yield (id, file_path) for photos with no CLIP embedding for this model.
+
+    Incremental: a photo is returned only if it has no ``clip_embeddings`` row
+    matching the given model+version, so re-running only embeds new photos.
+    """
+    sql = (
+        "SELECT p.id, p.file_path FROM photos p "
+        "WHERE NOT EXISTS (SELECT 1 FROM clip_embeddings ce "
+        "WHERE ce.photo_id = p.id AND ce.model = %s AND ce.version = %s) "
+        "ORDER BY p.id"
+    )
+    params: tuple[Any, ...] = (model, version)
+    if limit is not None:
+        sql += " LIMIT %s"
+        params = (model, version, limit)
+    with conn.cursor(name="pending_clip") as cur:
+        cur.itersize = 256
+        cur.execute(sql, params)
+        for row in cur:
+            yield int(row[0]), row[1]
+
+
+def count_photos_needing_clip(cur: PgCursor, model: str, version: int) -> int:
+    """Count photos with no CLIP embedding for this model+version."""
+    cur.execute(
+        "SELECT count(*) FROM photos p WHERE NOT EXISTS ("
+        "SELECT 1 FROM clip_embeddings ce WHERE ce.photo_id = p.id "
+        "AND ce.model = %s AND ce.version = %s)",
+        (model, version),
+    )
+    return int(cur.fetchone()[0])
+
+
+def upsert_clip_embedding(
+    cur: PgCursor, photo_id: int, embedding: Sequence[float], model: str, version: int
+) -> None:
+    """Insert or replace a photo's CLIP embedding (one active model per photo)."""
+    cur.execute(
+        """
+        INSERT INTO clip_embeddings (photo_id, embedding, model, version)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (photo_id) DO UPDATE
+           SET embedding = EXCLUDED.embedding,
+               model = EXCLUDED.model,
+               version = EXCLUDED.version,
+               updated_at = now()
+        """,
+        (photo_id, list(embedding), model, version),
+    )
+
+
+def count_clip_embeddings(cur: PgCursor, model: Optional[str] = None) -> int:
+    """Count stored CLIP embeddings (optionally for a specific model)."""
+    if model is None:
+        cur.execute("SELECT count(*) FROM clip_embeddings")
+    else:
+        cur.execute("SELECT count(*) FROM clip_embeddings WHERE model = %s", (model,))
+    return int(cur.fetchone()[0])
+
+
+def search_photos_by_clip(
+    cur: PgCursor,
+    query_vector: Sequence[float],
+    model: str,
+    limit: int = 200,
+) -> list[tuple[int, str, Optional[str], Any, float]]:
+    """Return the top-K photos most similar to a query vector.
+
+    Rows are (id, file_path, thumbnail_path, taken_at, score) ordered by cosine
+    similarity descending. ``score`` is 1 - cosine_distance in [0, 1]. Restricted
+    to embeddings from ``model`` so mixed-model results never appear.
+    """
+    vec = list(query_vector)
+    cur.execute(
+        """
+        SELECT p.id, p.file_path, p.thumbnail_path, p.taken_at,
+               1 - (ce.embedding <=> %s::vector) AS score
+          FROM clip_embeddings ce
+          JOIN photos p ON p.id = ce.photo_id
+         WHERE ce.model = %s
+         ORDER BY ce.embedding <=> %s::vector
+         LIMIT %s
+        """,
+        (vec, model, vec, limit),
+    )
+    return [(int(r[0]), r[1], r[2], r[3], float(r[4])) for r in cur.fetchall()]
+
+
 def recent_scan_runs(cur: PgCursor, limit: int = 5) -> list[dict[str, Any]]:
     """Return the most recent scan runs for the dashboard activity feed."""
     cur.execute(

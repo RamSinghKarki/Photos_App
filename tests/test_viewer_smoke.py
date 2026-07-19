@@ -40,8 +40,9 @@ def test_main_window_builds_and_navigates(qapp, clean_db, photo_tree: Path) -> N
         window.show_page("photos")
         assert window._gallery._model.rowCount() == 5  # all photos in the grid
 
-        # Navigating to other pages (including a planned one) must not raise.
+        # Navigating to other pages (including search and a planned one) must not raise.
         window.show_page("people")
+        window.show_page("search")
         window.show_page("dashboard")
         window.show_page("timeline")
     finally:

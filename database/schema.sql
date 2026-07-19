@@ -119,6 +119,25 @@ BEGIN
 END$$;
 
 -- ---------------------------------------------------------------------------
+-- clip_embeddings: per-photo CLIP image embedding for semantic search.
+-- Versioned by model so a future model upgrade can tell which embeddings are
+-- stale (re-embedding upserts the row). One active model per photo.
+-- The vector size MUST match Settings.clip_embedding_dim (512 for ViT-B-32);
+-- switching to a different-dimension model requires recreating this table.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS clip_embeddings (
+    photo_id    BIGINT PRIMARY KEY REFERENCES photos (id) ON DELETE CASCADE,
+    embedding   vector(512) NOT NULL,          -- L2-normalized CLIP image vector
+    model       TEXT        NOT NULL,          -- e.g. 'ViT-B-32/openai'
+    version     INTEGER     NOT NULL DEFAULT 1,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_clip_model ON clip_embeddings (model, version);
+CREATE INDEX IF NOT EXISTS idx_clip_embedding
+    ON clip_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+
+-- ---------------------------------------------------------------------------
 -- scan_runs: an audit log of each scan, powering the processing summary.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS scan_runs (
