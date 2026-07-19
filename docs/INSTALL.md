@@ -168,7 +168,31 @@ faces/people.
 
 ---
 
-## 7. Verify the install
+## 7. Check your environment (and GPU)
+
+Run the built-in diagnostic — it inspects everything and tells you whether face
+detection will use your **GPU** or fall back to CPU:
+
+```bash
+python -m scripts.setup_check
+```
+
+Key line to look for:
+
+```
+Face detection device:
+  [ OK ]  Faces will run on the GPU (CUDA via onnxruntime)
+```
+
+If it says **CPU** instead, your onnxruntime is the CPU build — install the GPU
+one (PyTorch having CUDA is not enough; InsightFace uses onnxruntime):
+
+```bash
+pip uninstall -y onnxruntime
+pip install onnxruntime-gpu
+```
+
+## 8. Verify the install
 
 ```bash
 pip install pytest
