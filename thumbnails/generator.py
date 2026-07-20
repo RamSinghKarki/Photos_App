@@ -20,6 +20,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from config.settings import get_settings
 from database import db
 from utils.logging_setup import get_logger
+from utils.prefetch import prefetch
 
 logger = get_logger("thumbnails")
 
@@ -54,6 +55,12 @@ def generate_one(file_path: str, photo_id: int) -> str:
     out_path = settings.thumbnails_dir / f"{photo_id}.jpg"
 
     with Image.open(file_path) as img:
+        # JPEG fast path: ask the decoder for a reduced-scale decode (DCT
+        # scaling) BEFORE any conversion touches the pixels. Decoding a 24 MP
+        # photo at 1/4 scale is several times faster than full-res; 2x the
+        # target keeps the final Lanczos downscale visually lossless. No-op for
+        # PNG and other formats.
+        img.draft("RGB", (size * 2, size * 2))
         oriented = ImageOps.exif_transpose(img)  # honour EXIF orientation
         oriented = oriented.convert("RGB")
         oriented.thumbnail((size, size))  # in-place, preserves aspect ratio
@@ -94,12 +101,17 @@ def generate_thumbnails(
 
         committed = 0
         done = 0
-        for photo_id, file_path in db.stream_photos_needing_thumbnail(
+        # Decode + render in parallel (Pillow releases the GIL); DB writes stay
+        # on this thread. Rendering was the pipeline's slowest single-threaded
+        # stage — one core decoded while the rest of the machine idled.
+        stream = db.stream_photos_needing_thumbnail(
             read_conn, regenerate=regenerate, limit=limit
+        )
+        for (photo_id, file_path), future in prefetch(
+            stream, lambda row: generate_one(row[1], row[0]), settings.decode_workers
         ):
             try:
-                thumb_path = generate_one(file_path, photo_id)
-                db.set_thumbnail_path(cur, photo_id, thumb_path)
+                db.set_thumbnail_path(cur, photo_id, future.result())
                 summary.generated += 1
             except (FileNotFoundError, UnidentifiedImageError, OSError) as exc:
                 summary.unreadable += 1

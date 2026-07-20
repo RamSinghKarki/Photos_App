@@ -134,6 +134,16 @@ class Settings:
         default_factory=lambda: float(_env_str("PHOTOSPHERE_FACE_MATCH_THRESHOLD", "0.55"))
     )
 
+    # Threads decoding images ahead of the consumer (thumbnailer, face detector,
+    # CLIP). Decode is the pipeline's real bottleneck — the GPU finishes in
+    # milliseconds and idles while Python opens the next JPEG; overlapping
+    # decode keeps it fed. Bounded by prefetch depth so memory stays flat.
+    decode_workers: int = field(
+        default_factory=lambda: _env_int(
+            "PHOTOSPHERE_DECODE_WORKERS", min(8, os.cpu_count() or 4)
+        )
+    )
+
     # --- Recognition engine v2 (representative gallery) ---------------------
     # Minimum face quality (0..1) to *store* an embedding in a person's gallery.
     # Below this a detection is ignored — a blurry/tiny/low-confidence face must

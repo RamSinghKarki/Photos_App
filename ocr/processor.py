@@ -17,6 +17,7 @@ from config.settings import get_settings
 from database import db
 from ocr.backend import OcrBackend
 from utils.logging_setup import get_logger
+from utils.prefetch import prefetch
 
 logger = get_logger("ocr")
 
@@ -64,11 +65,21 @@ def run_ocr(
 
         done = 0
         committed = 0
-        for photo_id, file_path in db.stream_photos_needing_ocr(read_conn, limit=limit):
+
+        def _decode(row) -> Image.Image:
+            # Full resolution on purpose: draft-scale decode would blur the very
+            # small text OCR exists to read. Decode overlaps the engine via the
+            # prefetch pool, so the OCR model never waits on JPEG decode.
+            with Image.open(row[1]) as im:
+                return im.convert("RGB")
+
+        stream = db.stream_photos_needing_ocr(read_conn, limit=limit)
+        for (photo_id, file_path), future in prefetch(
+            stream, _decode, min(4, settings.decode_workers)
+        ):
             done += 1
             try:
-                with Image.open(file_path) as im:
-                    image = im.convert("RGB")
+                image = future.result()
             except (FileNotFoundError, UnidentifiedImageError, OSError) as exc:
                 # Mark processed (empty) so a dead file isn't retried forever.
                 db.set_ocr_text(cur, photo_id, "")

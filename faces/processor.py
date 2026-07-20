@@ -29,6 +29,7 @@ from config.settings import get_settings
 from database import db
 from faces.detector import DetectedFace, FaceDetector
 from utils.logging_setup import get_logger
+from utils.prefetch import prefetch
 
 logger = get_logger("faces.processor")
 
@@ -74,10 +75,12 @@ def _save_face_crop(image: Image.Image, face: DetectedFace, photo_id: int, index
     return str(out_path)
 
 
-def _process_one_photo(
-    cur, detector: FaceDetector, photo_id: int, file_path: str
-) -> int:
-    """Detect, crop and store faces for a single photo; return face count.
+def _decode_photo(file_path: str) -> tuple[Image.Image, np.ndarray]:
+    """Load a photo as (PIL RGB image, HxWx3 array) — the CPU-heavy step.
+
+    Runs on the prefetch pool so the detector (GPU) never waits on JPEG decode.
+    Full resolution on purpose: bounding boxes and the quality score (bbox size)
+    must be in true source pixels.
 
     Raises:
         UnreadableImageError: if the file cannot be opened as an image.
@@ -86,22 +89,31 @@ def _process_one_photo(
         img = Image.open(file_path)
     except (FileNotFoundError, UnidentifiedImageError, OSError) as exc:
         raise UnreadableImageError(str(exc)) from exc
-
     with img:
         rgb_img = img.convert("RGB")
-        rgb_array = np.asarray(rgb_img)
-        faces = detector.detect(rgb_array)
+    return rgb_img, np.asarray(rgb_img)
 
-        for index, face in enumerate(faces):
-            crop_path = _save_face_crop(rgb_img, face, photo_id, index)
-            db.insert_face(
-                cur,
-                photo_id=photo_id,
-                bbox=face.bbox,
-                embedding=face.embedding,
-                det_score=face.det_score,
-                crop_path=crop_path,
-            )
+
+def _process_one_photo(
+    cur,
+    detector: FaceDetector,
+    photo_id: int,
+    rgb_img: Image.Image,
+    rgb_array: np.ndarray,
+) -> int:
+    """Detect, crop and store faces for one decoded photo; return face count."""
+    faces = detector.detect(rgb_array)
+
+    for index, face in enumerate(faces):
+        crop_path = _save_face_crop(rgb_img, face, photo_id, index)
+        db.insert_face(
+            cur,
+            photo_id=photo_id,
+            bbox=face.bbox,
+            embedding=face.embedding,
+            det_score=face.det_score,
+            crop_path=crop_path,
+        )
 
     db.mark_photo_faces_processed(cur, photo_id)
     return len(faces)
@@ -165,7 +177,17 @@ def process_faces(
 
         committed = 0
         done = 0
-        for photo_id, file_path in source:
+        # Decode ahead on a small pool so the detector (GPU) never idles waiting
+        # on JPEG decode — that stall was measured at ~90% of the loop. Depth is
+        # kept small: each in-flight item holds a full-resolution decode.
+        decode_workers = min(4, settings.decode_workers)
+        prefetched = prefetch(
+            source,
+            lambda row: _decode_photo(row[1]),
+            workers=decode_workers,
+            depth=decode_workers + 2,
+        )
+        for (photo_id, file_path), decoded in prefetched:
             # A per-photo savepoint isolates failures: a bad image rolls back
             # only its own writes, never the rest of the uncommitted batch.
             cur.execute("SAVEPOINT photo_sp")
@@ -173,7 +195,8 @@ def process_faces(
                 if reprocess or selected:
                     db.delete_faces_for_photo(cur, photo_id)
 
-                found = _process_one_photo(cur, detector, photo_id, file_path)
+                rgb_img, rgb_array = decoded.result()  # raises UnreadableImageError
+                found = _process_one_photo(cur, detector, photo_id, rgb_img, rgb_array)
                 cur.execute("RELEASE SAVEPOINT photo_sp")
 
                 summary.photos += 1

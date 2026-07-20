@@ -20,6 +20,7 @@ from config.settings import get_settings
 from database import db
 from search.embedding_backend import EmbeddingBackend
 from utils.logging_setup import get_logger
+from utils.prefetch import prefetch
 
 logger = get_logger("search.engine")
 
@@ -98,13 +99,24 @@ def embed_images(
             if on_progress is not None:
                 on_progress(done, total)
 
-        for photo_id, file_path in db.stream_photos_needing_clip(
-            read_conn, model_id, version, limit=limit
+        def _decode(row: Tuple[int, str]) -> Image.Image:
+            """CPU-heavy decode, run on the prefetch pool.
+
+            CLIP preprocessing resizes to ~224 px anyway, so ask the JPEG
+            decoder for a reduced-scale decode (DCT scaling) — decoding a 24 MP
+            photo at full resolution here was pure waste.
+            """
+            with Image.open(row[1]) as im:
+                im.draft("RGB", (512, 512))
+                return im.convert("RGB")  # detaches from the file handle
+
+        stream = db.stream_photos_needing_clip(read_conn, model_id, version, limit=limit)
+        for (photo_id, file_path), future in prefetch(
+            stream, _decode, settings.decode_workers
         ):
             done += 1
             try:
-                with Image.open(file_path) as im:
-                    image = im.convert("RGB")  # detaches from the file handle
+                image = future.result()
             except (FileNotFoundError, UnidentifiedImageError, OSError) as exc:
                 summary.unreadable += 1
                 logger.warning("Cannot embed %s: %s", file_path, exc)

@@ -73,6 +73,45 @@ The tab now switches instantly and stays flat as the library grows.
   `photos.faces_processed` partial) are indexed; face similarity uses the
   `ivfflat` cosine index.
 
+## Case study: GPU starvation during import (2026-07)
+
+**Symptom (user-reported):** importing photos, thumbnails and face detection
+crawl while the RTX 5060 sits at ~6–10% utilization in short bursts.
+
+**Diagnosis:** the GPU was never the bottleneck — it was *starving*. Both stages
+ran a strictly sequential loop: decode a full-resolution JPEG in Python
+(100–400 ms, one core), hand it to the consumer (detector: ~20 ms on the GPU),
+repeat. GPU duty cycle ≈ 20 / (decode + 20) — exactly the single-digit spikes
+observed. The thumbnailer additionally converted to RGB *before* thumbnailing,
+which forces a full-resolution decode and defeats JPEG DCT scaling.
+
+**Fix (no behavior change):**
+
+- `utils/prefetch.py` — a bounded, ordered thread-pool prefetcher. Workers only
+  decode (Pillow releases the GIL); the detector, batching, SAVEPOINTs and all
+  DB writes stay on the coordinator thread, and cancellation still unwinds
+  cleanly. Order preservation keeps progress/commit semantics identical.
+- Thumbnails: `img.draft("RGB", 2×target)` *before* transpose/convert lets the
+  JPEG decoder produce a 1/2–1/8-scale image directly, then render in parallel
+  across `PHOTOSPHERE_DECODE_WORKERS` (default `min(8, cores)`).
+- Faces: full-resolution decode (bbox/quality integrity) prefetched ahead of
+  the detector, so the GPU is fed back-to-back.
+- CLIP: decode drafted to ~512 px (the model resizes to ~224 anyway) and
+  prefetched. OCR: prefetched, deliberately *not* drafted (small text).
+
+**Measured** (60 × 12 MP JPEGs, 4-core container, GPU simulated at 20 ms/photo):
+
+| Stage | Before | After |
+|---|---|---|
+| Thumbnails | 10.6 s (5.7/s) | **1.0 s (60.9/s)** — 10.6× |
+| Face pipeline | 13.2 s (4.5/s) | **6.5 s (9.3/s)** — 2.0× |
+| GPU duty cycle (sim) | 9.1% | 18.5% |
+
+The faces number is decode-bound by this container's 4 cores; on a typical
+8–16-core desktop the same prefetch pushes the detector much closer to
+GPU-bound. Remaining headroom (future, measure first): batched detector
+inference, and decode-at-`det_size` with bbox rescaling.
+
 ## Targets (v1.0) and status
 
 | Metric | Target | Status |
