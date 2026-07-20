@@ -1,7 +1,13 @@
 # PhotoSphere AI 2.0 — Product Design Document
 
-**Status: DRAFT — awaiting approval. No UI implementation until this document
-is reviewed and approved.**
+**Status: APPROVED WITH REVISIONS — FROZEN (rev 1).** Qt Widgets confirmed for
+2.0 (no QML migration). Rev 1 incorporates the review feedback: three-pane
+layout, search-first workflow, activity dashboard, immersive viewer workspace,
+rich people profiles, categorized AI Review, command palette, notification
+center, visual-hierarchy levels, empty states, full design system, future
+reservations, responsive rules, micro-interactions, visual identity, and a
+Phase 0 UX prototype. Amendments from here are edits to this file, reviewed
+the same way.
 
 This is the design contract for the 2.0 experience: what we build, why each
 piece exists, and the order it lands in. It supersedes screen-by-screen tweaks;
@@ -39,6 +45,36 @@ fully offline, privacy-first.
 
 ## 3. Information Architecture
 
+### 3.1 Three-pane layout (the structural change)
+
+```
+┌─────────┬───────────────────────────────┬──────────────────────┐
+│ Sidebar │        Main content           │  Context / Inspector │
+│ (nav)   │  (the current workflow)       │  (about the selection)│
+└─────────┴───────────────────────────────┴──────────────────────┘
+```
+
+The right **inspector** is one persistent panel whose content follows context —
+Lightroom/VS Code style, killing most dialogs:
+
+| Context | Inspector shows |
+|---|---|
+| Photo selected | metadata, faces, OCR text, similar, (later) objects |
+| Person | profile summary, known appearances, appears-with |
+| Album | info, counts, rules (for smart albums) |
+| Search | active filters + "why matched" explanation |
+| AI Review | evidence and confidence for the focused question |
+| Nothing | collapsed |
+
+### 3.2 Responsive rules
+
+- **Ultra-wide:** sidebar + content + inspector all visible.
+- **Laptop (< ~1280 px):** inspector collapses to a toggle (I key / button).
+- **Narrow (< ~900 px):** sidebar collapses to icon rail; content only.
+Breakpoints are layout-driven (splitter policies), never fixed pixels.
+
+### 3.3 Navigation
+
 Navigation reorganizes around workflows, not modules:
 
 ```
@@ -61,6 +97,16 @@ Changes from 1.x: "Search" leaves the sidebar (permanent top bar + palette);
 "Videos/Objects/Similar/Archive/Trash" placeholders are removed from view
 (reserved keys remain in the registry); **AI Review** is new and absorbs the
 per-page suggestion strips as *one* workflow with a live badge.
+
+**Search is the heart of the app, not a page**: the "Search your memories…"
+box is permanently visible in the top bar on every screen; typing anywhere
+routes intent automatically (person / text / semantic / date / album — the
+engine decides, never the user). Ctrl+K opens the same engine as a command
+palette.
+
+**Future reservations** (registry keys exist, hidden until built): Videos,
+Documents, Maps, Duplicates, Shared Libraries, Plugins, Developer Mode. Adding
+any of them later is a registry entry, not a navigation redesign.
 
 ## 4. Visual Language & Design Tokens
 
@@ -85,18 +131,54 @@ light mode fully supported.
   sidebar 200 ms · photo-open 220 ms. **Hard cap 250 ms**; every animation is
   interruptible; `prefers-reduced-motion`-style toggle in Settings disables all.
 
+### 4.1 Visual hierarchy (three emphasis levels)
+
+Every screen composes exactly three levels, so the eye always knows where to
+look first: **Primary** — large imagery/cards (photos, profiles, review
+evidence); **Secondary** — lists and grids supporting the primary; **Tertiary**
+— metadata, chips, counts (muted color, size 12–14, never bolder than
+secondary). A screen with two competing primaries is a design bug.
+
+### 4.2 Visual identity
+
+Recognizable at a glance: lens-inspired mark (concentric rounded aperture, used
+in the sidebar header and About), single blue accent, rounded cards, one icon
+family (the existing line-drawn set, extended — never mixed with emoji in
+chrome), minimal gradients (photos provide the color), generous whitespace.
+
+### 4.3 Micro-interactions (the premium feel)
+
+Hover elevation (card lifts one level, 120 ms) · press ripple on buttons ·
+thumbnail fade-in as decodes land (already async) · animated selection check
+(150 ms) · smooth kinetic scrolling · native context menus everywhere ·
+skeleton loaders on every list · animated determinate progress. Nothing
+flashy; all interruptible; all within the 250 ms cap.
+
+### 4.4 Notification center (no interrupting dialogs)
+
+Modal popups are reserved for destructive confirmations only. Everything else
+flows through a **notification panel** (bell in the top bar, badge for unread)
+plus transient 3 s toasts: *Import finished · 3 duplicate people found · OCR
+complete · GPU switched to CUDA · Backup completed.* Notifications are
+actionable (click → relevant screen) and logged, not lost.
+
 ## 5. Component Library (build once, reuse everywhere)
 
 `viewer/components/` grows into a real kit; pages may only compose these:
 
 PhotoCard · PersonCard · AlbumCard · SuggestionCard (one design for *all* AI
-questions: evidence left, verdict buttons right) · SearchResultRow · InfoPanel
-(inspector) · MetadataChip · StatusBadge · ProgressOverlay · TimelineHeader
-(sticky) · EmptyState (icon + one sentence + one action) · SkeletonLoader ·
-Toolbar · ContextMenu · CommandPalette · Toast.
+questions: evidence left, verdict buttons right) · SearchResultRow ·
+InspectorPanel (context-driven, §3.1) · MetadataChip · StatusBadge ·
+ProgressOverlay · TimelineHeader (sticky) · EmptyState · SkeletonLoader ·
+Toolbar · ContextMenu · CommandPalette · NotificationCenter · Toast.
 
 Rules: every interactive element ≥ 40 px hit target; every component renders a
 skeleton state; every list is virtualized (existing model/view pattern).
+
+**Empty states are designed, not blank**: every page ships one — icon, one
+sentence, one action ("No albums yet — Create your first album [New Album]";
+"All caught up" in Review; "Import photos to begin" in Photos). An empty page
+without its empty state fails review.
 
 ## 6. Screen Specifications (low-fi wireframes)
 
@@ -145,17 +227,35 @@ Ctrl+wheel. Skeletons while pages stream in.
 └──────────────────────────────────────────────────────────────┘
 ```
 
+The viewer is a **workspace, not a popup**: opening a photo replaces the main
+content (sidebar collapses to an icon rail) rather than floating a dialog.
 Right inspector with People / Info / OCR text / Similar tabs (updates
-instantly from the knowledge base); Esc or F toggles full immersion; ← → and
-filmstrip navigate; ♥ favorites.
+instantly from the knowledge base). Keyboard: double-click or Enter enters the
+workspace · **Space** hides all UI (photo only) · **F** OS fullscreen · ← → and
+filmstrip navigate · ♥/F-key favorites · Esc backs out with scroll position
+preserved. Full-res streams progressively over the already-loaded thumbnail —
+opening is always instant.
 
 ### 6.4 People — identity profiles
 
-Person page becomes a profile: avatar + editable name (click-to-rename),
-first/last seen, photo count, **Appearances** (the learned gallery — already
-built), **Suggestions** (already built), photos grid, actions (Merge, Export,
-Delete). People grid keeps virtualization; adds search-within-people and the
-"Same person?" strip (already built).
+Every person is a **profile, not a folder**:
+
+```
+┌ ☺ Ram ✎                      452 photos ┐
+│ First seen 2019 · Last seen yesterday    │
+│ Known appearances: ▣▣▣▣▣  (the gallery)  │
+│ Appears with: ☺ Hari · ☺ Sita · ☺ Mother │
+│ [Suggestions strip]  [Merge] [Export]    │
+│ ─ photos grid, newest first ─            │
+└──────────────────────────────────────────┘
+```
+
+Avatar + click-to-rename name; first/last seen (min/max `taken_at`, cheap
+query); photo count; **Known appearances** = the representative gallery
+(built); **Appears with** = co-occurrence (people sharing photos — one new
+query, no schema change); suggestions strip (built); actions Merge / Export /
+Delete. Confidence numbers stay out of the profile (Review-only). People grid
+keeps virtualization, adds name search and the "Same person?" strip (built).
 
 ### 6.5 Search — the signature
 
@@ -186,9 +286,22 @@ the existing bucket queries.
 └────────────────────────────────────────────────────┘
 ```
 
-Consolidates every pending question (the strips remain in-place shortcuts; the
-Review page is the same data as one keyboard-driven queue). Sidebar badge shows
-the count. Future: duplicates, model-update reviews land here.
+Consolidates every pending question as one keyboard-driven queue (the in-page
+strips remain as shortcuts to the same data). Work is **categorized**, and every
+future source of uncertainty lands here without new UI:
+
+| Category | Source |
+|---|---|
+| Possible merge ("Same person?") | merge scan (built) |
+| Low-confidence match ("Is this \<name\>?") | active learning (built) |
+| Needs identity / Unknown faces | large unnamed persons + ungrouped clusters |
+| Possible duplicate photos | duplicates module (queued) |
+| OCR / Object review | future modules |
+| Model updates | future re-embedding reviews |
+
+Sidebar badge shows the total; the inspector shows evidence (covers, scores,
+context) for the focused item — the *only* surface where confidence numbers
+appear.
 
 ### 6.8 Settings
 
@@ -241,6 +354,7 @@ option behind the same Python backend if 3.0 demands richer motion.
 
 | Phase | Scope | Builds on |
 |---|---|---|
+| 0 | **UX prototype**: clickable mockup of the full journey (three-pane shell, dashboard, photos, viewer workspace, person profile, review queue, palette, notifications) — walked through and approved *before* Qt code; issues are cheapest here | `docs/prototype.html` |
 | 1 | **Design system**: tokens, elevation, type ramp, component kit + skeletons, motion utilities | audit item 7 (page registry) folds in here |
 | 2 | **Navigation**: registry-driven sidebar w/ badge, top bar, Ctrl+K palette | |
 | 3 | **Dashboard** (activity model) | |
