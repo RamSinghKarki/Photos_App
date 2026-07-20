@@ -22,6 +22,7 @@ more addable without redesigning the schema.
 | [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | Query/UI/search timings at 1k / 10k / 100k photos |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Path to v1.0 — milestones, targets, decisions |
 | [docs/AUDIT.md](docs/AUDIT.md) | Senior-engineer audit (2026-07) + prioritized tech-debt register |
+| [docs/PDD.md](docs/PDD.md) | PhotoSphere AI 2.0 Product Design Document (draft — awaiting approval) |
 | [docs/PhotoSphere_AI_System_Prompt.md](docs/PhotoSphere_AI_System_Prompt.md) | Project vision, architecture rules, per-module Definition of Done |
 
 ## Module status
