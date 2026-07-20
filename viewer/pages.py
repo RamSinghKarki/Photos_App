@@ -11,6 +11,7 @@ from typing import Optional
 from PySide6 import QtCore, QtWidgets
 
 from viewer import data
+from viewer.actions import ActionRunner
 from viewer.appearance_strip import AppearanceStrip, SuggestionStrip
 from viewer.components import StatCard, _human_bytes
 from viewer.gallery import PhotoGrid, PhotoGridModel
@@ -170,6 +171,9 @@ class PersonDetailPage(QtWidgets.QWidget):
     def __init__(self) -> None:
         super().__init__()
         self._person_id: Optional[int] = None
+        # Corrections rebuild galleries (seconds on a large person) — they run
+        # on this runner, never on the UI thread.
+        self._runner = ActionRunner(self)
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(16, 12, 16, 0)
@@ -237,30 +241,50 @@ class PersonDetailPage(QtWidgets.QWidget):
             who = self._name.text()
             self.show_person(self._person_id, None if who == "Unknown" else who)
 
+    # -- corrections (gallery-rebuilding writes; run off the UI thread) ------
+    def _run_correction(self, fn, after) -> None:
+        """Run a correction on the background runner; refresh (or fail) on GUI.
+
+        ``after(result)`` runs on the GUI thread once the write committed.
+        A second correction while one is in flight is ignored (single-flight).
+        """
+        self._runner.run(fn, on_done=after, on_error=self._action_failed)
+
+    def _action_failed(self, message: str) -> None:
+        QtWidgets.QMessageBox.warning(self, "Action failed", message)
+
+    def _after_change(self, _result: object = None, back_if_empty: bool = True) -> None:
+        """Standard post-correction refresh: notify, reload, back out if emptied."""
+        self.person_changed.emit()
+        self._reload_person()
+        if back_if_empty and not self._model.photo_ids():
+            self.back_requested.emit()  # person emptied out (and was removed)
+
     def _on_confirm_suggestion(self, face_id: int) -> None:
         if self._person_id is None:
             return
-        data.confirm_suggestion(face_id, self._person_id)
-        self.person_changed.emit()
-        self._reload_person()
+        person_id = self._person_id
+        self._run_correction(
+            lambda: data.confirm_suggestion(face_id, person_id), self._after_change
+        )
 
     def _on_reject_suggestion(self, face_id: int) -> None:
         if self._person_id is None:
             return
-        data.reject_suggestion(face_id, self._person_id)
-        self._reload_person()
+        person_id = self._person_id
+        self._run_correction(
+            lambda: data.reject_suggestion(face_id, person_id),
+            lambda _r: self._reload_person(),
+        )
 
     def _on_reject_representative(self, face_id: int) -> None:
         """User dropped one learned appearance from the person."""
         if self._person_id is None:
             return
-        who = self._name.text()
-        remaining = data.reject_representative(self._person_id, face_id)
-        self.person_changed.emit()
-        if remaining:
-            self.show_person(self._person_id, None if who == "Unknown" else who)
-        else:
-            self.back_requested.emit()  # person emptied out
+        person_id = self._person_id
+        self._run_correction(
+            lambda: data.reject_representative(person_id, face_id), self._after_change
+        )
 
     def _on_remove_from_person(self, photo_ids: list[int]) -> None:
         """User says these photos are not this person: detach + remember."""
@@ -274,14 +298,11 @@ class PersonDetailPage(QtWidgets.QWidget):
         )
         if reply != QtWidgets.QMessageBox.StandardButton.Yes:
             return
-        moved = data.remove_faces_from_person(self._person_id, photo_ids)
-        if not moved:
-            return
-        self.person_changed.emit()
-        # Reload; if the person has no photos left (it was removed), go back.
-        self.show_person(self._person_id, None if who == "Unknown" else who)
-        if not self._model.photo_ids():
-            self.back_requested.emit()
+        person_id = self._person_id
+        self._run_correction(
+            lambda: data.remove_faces_from_person(person_id, photo_ids),
+            self._after_change,
+        )
 
     # -- editing -------------------------------------------------------------
     def _on_rename(self) -> None:
@@ -326,6 +347,12 @@ class PersonDetailPage(QtWidgets.QWidget):
         if not ok:
             return
         target = others[labels.index(choice)]
-        data.merge_person_into(self._person_id, target["id"])
-        self.person_changed.emit()
-        self.open_person_requested.emit(target["id"])  # show the merged result
+        source_id = self._person_id
+        target_id = target["id"]
+
+        def _after_merge(_r: object) -> None:
+            self.person_changed.emit()
+            self.open_person_requested.emit(target_id)  # show the merged result
+
+        # Merging rebuilds the target's gallery — off the UI thread.
+        self._run_correction(lambda: data.merge_person_into(source_id, target_id), _after_merge)

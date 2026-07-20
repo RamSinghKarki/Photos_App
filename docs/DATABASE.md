@@ -238,7 +238,8 @@ Grouped by area — this is the full public surface the rest of the app uses.
   `set_person_centroid`, `fetch_person_centroids`, `update_person_profile`,
   `count_persons`, `list_persons_with_cover`, `rename_person`, `delete_person`,
   `merge_persons`.
-- **Representative gallery (recognition v2):** `add_person_embedding`,
+- **Representative gallery (recognition v2):** `add_person_embeddings_from_faces`
+  (bulk; embeddings copied server-side from `faces`, never through Python),
   `fetch_person_gallery`, `set_person_representatives`, `set_adaptive_threshold`,
   `fetch_person_representatives`, `clear_person_gallery`, `persons_missing_gallery`.
 - **Feedback memory (recognition):** `record_feedback`, `fetch_rejections`,

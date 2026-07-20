@@ -167,9 +167,9 @@ Gaps, most valuable first:
 
 | # | Item | Refs | Impact | Effort | Priority |
 |---|------|------|--------|--------|----------|
-| 1 | Batch gallery-rebuild upserts + move person corrections off the UI thread | P2, U1 | UI freezes up to ~2 s on common actions | M | **P0** |
-| 2 | Restrict context/rejection scoring to eligible rows (vectorize) | P1 | Pipeline slows 2.6×+, grows O(P×N) | S | **P0** |
-| 3 | Widget-level tests for correction flows (before #1's refactor) | T1 | Guards the P0 refactor | S | **P0** |
+| 1 | ✅ *done* — Batch gallery-rebuild upserts + move person corrections off the UI thread | P2, U1 | UI freezes up to ~2 s on common actions | M | **P0** |
+| 2 | ✅ *done* — Restrict context/rejection scoring to eligible rows (vectorize) | P1 | Grows O(P×N) (headline "2.6×" was overstated — see resolution log) | S | **P0** |
+| 3 | ✅ *done* — Widget-level tests for correction flows (before #1's refactor) | T1 | Guards the P0 refactor | S | **P0** |
 | 4 | Extract person-action service from `viewer/data.py`; fix stale docstring | A1 | Layering, future features build on it | M | **P1** |
 | 5 | `db.py` cleanup: delete dead helper, unify `_to_array`, merge→`recompute_person_profile` | A4, A5, D1 | Duplication, dead code | S | **P1** |
 | 6 | Post-import ANALYZE + vector-index rebuild step (or HNSW) | D3 | Search/recognition quality at scale | S | **P1** |
@@ -181,6 +181,47 @@ Gaps, most valuable first:
 | 12 | Docs refresh: ROADMAP stale ordering, DATABASE.md helper list, `clip_embedding` note | D2, docs | Accuracy | S | **P2** |
 | 13 | `dropEvent`/failed-pipeline/recluster-cascade tests | T2 | Coverage | S | **P2** |
 | 14 | face_count invariant check; migration convention pre-1.0; coverage tooling when online; undo/toasts; i18n | D4, D5, T4, U5/U6 | Long-term health | M+ | **P3** |
+
+## Resolution log
+
+### 2026-07 — P0 session (items 1–3)
+
+All three P0 items executed, measurement-verified; suite grew 102 → 106, green.
+
+- **Item 3 (guard tests first):** `tests/test_person_page_actions.py` — four
+  widget-level tests for confirm/reject-suggestion, remove-from-person, and the
+  error path, written with a pump-until pattern so they hold for sync *and*
+  async implementations. The error-path test was red against the old code
+  (proving U2) and went green with the refactor.
+- **Item 1 (corrections off the UI thread + fast gallery writes):**
+  - `viewer/actions.ActionRunner` (thread-pool, single-flight, queued-signal
+    callbacks); all five gallery-rebuilding corrections (confirm, reject
+    suggestion, reject representative, remove-from-person, merge) now run on it,
+    with a proper error dialog on failure (closes part of U2). Fast bounded
+    writes (rename, delete, favorite) intentionally stay synchronous.
+  - Gallery writes: investigation showed row-at-a-time upserts (~1.9 s / 1000
+    faces) were *not* fixed by plain batching (~1.4 s — serializing 1000×512
+    floats to SQL text dominates; larger pages are worse, 2.2 s). Root cause:
+    shipping vectors through Python that already live in `faces`. New
+    `db.add_person_embeddings_from_faces` sends only (person_id, face_id,
+    quality) and copies embeddings **server-side** via a JOIN.
+  - **Measured:** `rebuild_person_gallery` on a 1000-face person
+    **1 915 ms → ~400 ms** (store step 1 370 → ~60 ms), and it no longer runs on
+    the UI thread at all — perceived freeze is zero. Stored embeddings are now
+    raw rather than pre-normalized; every read path already normalizes
+    (verified), and the full suite confirms identical behavior.
+- **Item 2 (matching-loop scaling):** rejection mask vectorized with `np.isin`;
+  context scored only for the narrow eligible band (`np.nonzero(eligible)`)
+  instead of every face per person. Phase-measured after the fix: context adds
+  ~77 ms at 150 persons × 1 500 faces (16 ms loading + 61 ms in the loop).
+- **Measurement correction (integrity note):** the original P1 finding claimed
+  context fusion made matching "2.6× slower". Phase-level re-measurement showed
+  most of that gap was **one-time sklearn/DBSCAN import (~1.2 s)** attributed to
+  whichever scenario ran first — the un-warmed harness, my error. The true
+  pre-fix context cost at that scale was ~0.1–0.2 s; the O(P×N) growth concern
+  stands (≈5M Python calls at 500 persons × 10k faces) and is now structurally
+  eliminated, but the headline number was overstated. Micro-benchmarks in this
+  project now warm up first-call imports before timing.
 
 ## Standing constraints (reaffirmed)
 

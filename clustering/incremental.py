@@ -74,7 +74,6 @@ def _store_faces(
     face_ids: list[int],
     det_scores: list[float],
     sizes: list[tuple[int, int]],
-    embs_norm: "np.ndarray",
     settings: Settings,
     ensure_one: bool = True,
 ) -> int:
@@ -82,23 +81,19 @@ def _store_faces(
 
     A face below ``face_quality_store_min`` is *not* trusted to teach. If nothing
     clears the bar but ``ensure_one`` is set, the single best face is kept anyway
-    so the person always has at least one embedding to match against.
+    so the person always has at least one embedding to match against. The
+    embeddings themselves are copied server-side from ``faces`` (one statement).
     """
     quals = [
         face_quality(det_scores[i], sizes[i][0], sizes[i][1]) for i in range(len(face_ids))
     ]
-    stored = 0
-    for i, face_id in enumerate(face_ids):
-        if quals[i] >= settings.face_quality_store_min:
-            db.add_person_embedding(cur, person_id, face_id, embs_norm[i].tolist(), quals[i])
-            stored += 1
-    if stored == 0 and ensure_one and face_ids:
-        best = int(np.argmax(quals))
-        db.add_person_embedding(
-            cur, person_id, face_ids[best], embs_norm[best].tolist(), quals[best]
-        )
-        stored = 1
-    return stored
+    keep = [i for i in range(len(face_ids)) if quals[i] >= settings.face_quality_store_min]
+    if not keep and ensure_one and face_ids:
+        keep = [int(np.argmax(quals))]  # guarantee at least one embedding to match on
+    db.add_person_embeddings_from_faces(
+        cur, [(person_id, face_ids[i], quals[i]) for i in keep]
+    )
+    return len(keep)
 
 
 def _refresh_gallery(cur, person_id: int, settings: Settings) -> None:
@@ -133,13 +128,12 @@ def rebuild_person_gallery(cur, person_id: int, settings: Optional[Settings] = N
     so the representative set and adaptive threshold reflect the new membership.
     """
     settings = settings or get_settings()
-    face_ids, det_scores, sizes, embs = db.fetch_person_face_rows(cur, person_id)
+    face_ids, det_scores, sizes, _embs = db.fetch_person_face_rows(cur, person_id)
     db.clear_person_gallery(cur, person_id)
     if not face_ids:
         db.set_adaptive_threshold(cur, person_id, None)
         return
-    embs_norm = normalize_embeddings(embs)
-    _store_faces(cur, person_id, face_ids, det_scores, sizes, embs_norm, settings)
+    _store_faces(cur, person_id, face_ids, det_scores, sizes, settings)
     _refresh_gallery(cur, person_id, settings)
 
 
@@ -160,11 +154,10 @@ def confirm_face(cur, face_id: int, person_id: int, settings: Optional[Settings]
 def _backfill_galleries(cur, settings: Settings) -> None:
     """Seed galleries for people grouped before the gallery existed (one-time)."""
     for person_id in db.persons_missing_gallery(cur):
-        face_ids, det_scores, sizes, embs = db.fetch_person_face_rows(cur, person_id)
+        face_ids, det_scores, sizes, _embs = db.fetch_person_face_rows(cur, person_id)
         if not face_ids:
             continue
-        embs_norm = normalize_embeddings(embs)
-        _store_faces(cur, person_id, face_ids, det_scores, sizes, embs_norm, settings)
+        _store_faces(cur, person_id, face_ids, det_scores, sizes, settings)
         _refresh_gallery(cur, person_id, settings)
 
 
@@ -233,6 +226,7 @@ def _assign_to_existing(cur, global_threshold: float, settings: Settings) -> int
     person_contexts, face_contexts = _load_contexts(cur, face_ids, settings)
 
     n = faces_norm.shape[0]
+    face_ids_arr = np.asarray(face_ids, dtype=np.int64)
     best_score = np.full(n, -np.inf, dtype=np.float32)
     best_pid = np.full(n, -1, dtype=np.int64)
     # Track the closest candidate by *margin to threshold* for active learning.
@@ -244,19 +238,19 @@ def _assign_to_existing(cur, global_threshold: float, settings: Settings) -> int
         score = sims.max(axis=1)                     # best appearance per face
         rejected = rejections.get(person_id)
         if rejected:
-            blocked = np.array([fid in rejected for fid in face_ids])
+            blocked = np.isin(face_ids_arr, list(rejected))
             score = np.where(blocked, -np.inf, score)  # never rejoin this person
 
         # Same day / same place lifts a near-miss (but can't invent a match).
+        # Scored ONLY for the narrow near-threshold band — computing context for
+        # every face made matching O(persons x faces) in Python (audit item P1).
         person_ctx = person_contexts.get(person_id)
         if person_ctx is not None:
             eligible = score >= (info["thr"] - settings.context_reach)
-            if eligible.any():
-                cs = np.array(
-                    [context_score(face_contexts[i], person_ctx) for i in range(n)],
-                    dtype=np.float32,
-                )
-                score = score + settings.context_boost * cs * eligible
+            for i in np.nonzero(eligible)[0]:
+                boost = settings.context_boost * context_score(face_contexts[i], person_ctx)
+                if boost:
+                    score[i] += boost
 
         better = (score >= info["thr"]) & (score > best_score)
         best_score = np.where(better, score, best_score)
@@ -316,7 +310,6 @@ def _assign_to_existing(cur, global_threshold: float, settings: Settings) -> int
             member_face_ids,
             [det_scores[r] for r in rows],
             [sizes[r] for r in rows],
-            new_vectors,
             settings,
             ensure_one=False,
         )
@@ -335,7 +328,6 @@ def _cluster_remaining(
         return 0, 0, len(face_ids)
 
     labels = cluster_faces(embeddings, eps=eps, min_samples=min_samples, algorithm=algorithm)
-    embs_norm = normalize_embeddings(embeddings)
     groups: dict[int, list[int]] = defaultdict(list)
     for index, label in enumerate(labels):
         groups[int(label)].append(index)
@@ -360,7 +352,6 @@ def _cluster_remaining(
             member_ids,
             scores,
             [sizes[i] for i in indices],
-            embs_norm[indices],
             settings,
         )
         _refresh_gallery(cur, person_id, settings)

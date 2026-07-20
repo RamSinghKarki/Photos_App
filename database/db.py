@@ -462,30 +462,37 @@ def fetch_person_face_rows(
 # ---------------------------------------------------------------------------
 # Representative gallery (recognition engine v2)
 # ---------------------------------------------------------------------------
-def add_person_embedding(
-    cur: PgCursor,
-    person_id: int,
-    face_id: int,
-    embedding: Sequence[float],
-    quality: float,
-    is_representative: bool = False,
+def add_person_embeddings_from_faces(
+    cur: PgCursor, rows: Sequence[tuple[int, int, float]]
 ) -> None:
-    """Insert (or move) one face's embedding into a person's gallery.
+    """Insert (or move) many faces into person galleries in ONE statement.
 
-    Keyed by face_id: if the face is later reassigned (e.g. a merge), the row's
-    person_id and quality are updated rather than duplicated.
+    ``rows`` is (person_id, face_id, quality) per face; the embedding is copied
+    **server-side** from ``faces`` — it never round-trips through Python. The
+    previous approaches were measured (audit item P2): row-at-a-time upserts
+    ~1.9 s per 1000 faces, and even a batched insert still ~1.4 s because
+    serializing 1000×512 floats to SQL text dominates. This variant sends three
+    scalars per row. Keyed by face_id: a face reassigned by a merge moves rather
+    than duplicates. Stored embeddings are raw; every read path normalizes.
     """
-    cur.execute(
+    if not rows:
+        return
+    from psycopg2.extras import execute_values
+
+    execute_values(
+        cur,
         """
         INSERT INTO person_embeddings
             (person_id, face_id, embedding, quality, is_representative)
-        VALUES (%s, %s, %s, %s, %s)
+        SELECT v.person_id, v.face_id, f.embedding, v.quality, FALSE
+          FROM (VALUES %s) AS v(person_id, face_id, quality)
+          JOIN faces f ON f.id = v.face_id
         ON CONFLICT (face_id) DO UPDATE SET
             person_id = EXCLUDED.person_id,
             embedding = EXCLUDED.embedding,
             quality = EXCLUDED.quality
         """,
-        (person_id, face_id, list(embedding), float(quality), is_representative),
+        [(int(p), int(f), float(q)) for p, f, q in rows],
     )
 
 
