@@ -247,6 +247,10 @@ Grouped by area — this is the full public surface the rest of the app uses.
   `list_person_representatives_detail`, `detach_faces`.
 - **Active learning (suggestions):** `record_suggestion`, `delete_suggestion`,
   `delete_grouped_suggestions`, `list_suggestions_for_person`, `count_suggestions`.
+- **Merge scan (anti-fragmentation):** tables `person_merge_suggestions` /
+  `person_merge_rejections` (ordered pairs, cascade with either person);
+  helpers `replace_merge_suggestions`, `fetch_merge_rejections`,
+  `record_merge_rejection`, `list_merge_suggestions_detail`, `fetch_person_names`.
 - **Context fusion:** `fetch_person_context_rows`, `fetch_faces_photo_context`.
 - **Thumbnails:** `stream_photos_needing_thumbnail`, `set_thumbnail_path`,
   `count_photos_needing_thumbnail`.

@@ -54,6 +54,8 @@ class UpdateSummary:
     new_people: int = 0     # new person groups discovered
     grouped_new: int = 0    # faces placed into the new groups
     still_ungrouped: int = 0
+    auto_merged: int = 0    # duplicate (unnamed) profiles healed automatically
+    merge_suggested: int = 0  # "Same person?" questions pending for the user
 
     def render(self) -> str:
         return (
@@ -61,7 +63,9 @@ class UpdateSummary:
             f"Recognized:      {self.recognized}\n"
             f"New people:      {self.new_people}\n"
             f"Grouped (new):   {self.grouped_new}\n"
-            f"Still ungrouped: {self.still_ungrouped}"
+            f"Still ungrouped: {self.still_ungrouped}\n"
+            f"Auto-merged:     {self.auto_merged}\n"
+            f"Merge questions: {self.merge_suggested}"
         )
 
 
@@ -117,6 +121,7 @@ def _refresh_gallery(cur, person_id: int, settings: Settings) -> None:
         lo=settings.adaptive_threshold_min,
         hi=settings.adaptive_threshold_max,
         min_reps=settings.adaptive_threshold_min_reps,
+        strict_min_reps=settings.adaptive_strict_min_reps,
     )
     db.set_adaptive_threshold(cur, person_id, threshold)
 
@@ -324,8 +329,23 @@ def _cluster_remaining(
 ) -> tuple[int, int, int]:
     """Cluster still-ungrouped faces into NEW people. Returns (people, grouped, noise)."""
     face_ids, det_scores, sizes, embeddings = db.fetch_ungrouped_faces(cur)
+
+    # Quality gate on person FORMATION: an occluded / blurry / tiny detection
+    # ("something held near the face") may later *join* an existing person, but
+    # it must not found a new one — that is how junk profiles are born.
+    ok = [
+        i for i in range(len(face_ids))
+        if face_quality(det_scores[i], sizes[i][0], sizes[i][1])
+        >= settings.face_quality_store_min
+    ]
+    low_quality = len(face_ids) - len(ok)
+    face_ids = [face_ids[i] for i in ok]
+    det_scores = [det_scores[i] for i in ok]
+    sizes = [sizes[i] for i in ok]
+    embeddings = embeddings[ok] if len(ok) else embeddings[:0]
+
     if len(face_ids) < max(2, min_samples):
-        return 0, 0, len(face_ids)
+        return 0, 0, len(face_ids) + low_quality
 
     labels = cluster_faces(embeddings, eps=eps, min_samples=min_samples, algorithm=algorithm)
     groups: dict[int, list[int]] = defaultdict(list)
@@ -333,7 +353,7 @@ def _cluster_remaining(
         groups[int(label)].append(index)
 
     people = grouped = 0
-    noise = 0
+    noise = low_quality  # gated faces stay ungrouped alongside DBSCAN noise
     for label, indices in groups.items():
         if label == NOISE_LABEL:
             noise += len(indices)
@@ -393,6 +413,14 @@ def update_people(
         summary.still_ungrouped = noise
         # A suggestion is only valid while its face is still ungrouped.
         db.delete_grouped_suggestions(cur)
+
+        # Anti-fragmentation: heal/ask about duplicate profiles of one identity.
+        # (Imported lazily — merge_scan reuses this module's gallery rebuild.)
+        from clustering.merge_scan import scan_for_merges
+
+        merge_result = scan_for_merges(cur, settings)
+        summary.auto_merged = merge_result.auto_merged
+        summary.merge_suggested = merge_result.suggested
 
     logger.info(
         "Incremental update: recognized %d, %d new people, %d still ungrouped",

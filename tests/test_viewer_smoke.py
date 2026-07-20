@@ -132,6 +132,46 @@ def test_suggestion_strip_builds_and_signals(qapp) -> None:
     assert strip._row_layout.count() == 1
 
 
+def test_merge_strip_builds_and_signals(qapp) -> None:
+    """The 'Same person?' strip renders pair cards and relays both decisions."""
+    from viewer.merge_strip import MergeSuggestionStrip, _PairCard
+
+    strip = MergeSuggestionStrip()
+    merges: list[tuple[int, int]] = []
+    rejects: list[tuple[int, int]] = []
+    strip.merge_requested.connect(lambda s, t: merges.append((s, t)))
+    strip.reject_requested.connect(lambda a, b: rejects.append((a, b)))
+
+    strip.set_pairs([
+        {"person_a": 1, "person_b": 2, "score": 0.61,
+         "name_a": "Ram", "count_a": 40, "cover_a": None,
+         "name_b": None, "count_b": 5, "cover_b": None},
+        {"person_a": 3, "person_b": 4, "score": 0.55,
+         "name_a": None, "count_a": 2, "cover_a": None,
+         "name_b": None, "count_b": 9, "cover_b": None},
+    ])
+    cards = strip.findChildren(_PairCard)
+    assert len(cards) == 2
+
+    def click(card, label):
+        from PySide6 import QtWidgets as _qw
+
+        for btn in card.findChildren(_qw.QPushButton):
+            if btn.text() == label:
+                btn.click()
+                return
+        raise AssertionError(f"no '{label}' button on card")
+
+    # Named person wins the merge direction: unnamed 2 merges INTO named 1.
+    click(cards[0], "Merge")
+    assert merges == [(2, 1)]
+    click(cards[1], "Not the same")
+    assert rejects == [(3, 4)]
+
+    strip.set_pairs([])
+    assert strip._row_layout.count() == 1
+
+
 def test_photo_viewer_navigation(qapp, clean_db, photo_tree: Path) -> None:
     scan_directory(photo_tree)
     generate_thumbnails()

@@ -199,6 +199,34 @@ CREATE INDEX IF NOT EXISTS idx_recognition_suggestions_person
     ON recognition_suggestions (person_id);
 
 -- ---------------------------------------------------------------------------
+-- person_merge_suggestions: anti-fragmentation. Two persons whose galleries are
+-- highly similar are probably the same individual photographed differently
+-- (angle / beard / hairstyle). The merge scan refreshes this table after each
+-- recognition run; the UI asks "Same person?". Pairs are stored ordered
+-- (person_a < person_b) and cascade away with either person.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS person_merge_suggestions (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    person_a    BIGINT      NOT NULL REFERENCES persons (id) ON DELETE CASCADE,
+    person_b    BIGINT      NOT NULL REFERENCES persons (id) ON DELETE CASCADE,
+    score       REAL        NOT NULL,          -- best cross-gallery cosine
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (person_a, person_b),
+    CHECK (person_a < person_b)
+);
+
+-- The user's "not the same person" answers — a suggested pair rejected once is
+-- never suggested (or auto-merged) again.
+CREATE TABLE IF NOT EXISTS person_merge_rejections (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    person_a    BIGINT      NOT NULL REFERENCES persons (id) ON DELETE CASCADE,
+    person_b    BIGINT      NOT NULL REFERENCES persons (id) ON DELETE CASCADE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (person_a, person_b),
+    CHECK (person_a < person_b)
+);
+
+-- ---------------------------------------------------------------------------
 -- clip_embeddings: per-photo CLIP image embedding for semantic search.
 -- Versioned by model so a future model upgrade can tell which embeddings are
 -- stale (re-embedding upserts the row). One active model per photo.

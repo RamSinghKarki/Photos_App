@@ -15,6 +15,7 @@ from viewer.actions import ActionRunner
 from viewer.appearance_strip import AppearanceStrip, SuggestionStrip
 from viewer.components import StatCard, _human_bytes
 from viewer.gallery import PhotoGrid, PhotoGridModel
+from viewer.merge_strip import MergeSuggestionStrip
 from viewer.people_view import PeopleModel, PeopleView
 from viewer import theme
 
@@ -138,14 +139,23 @@ class PeoplePage(QtWidgets.QWidget):
 
     def __init__(self) -> None:
         super().__init__()
+        self._runner = ActionRunner(self)  # merges rebuild galleries: off-thread
+
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 12)
         layout.setSpacing(12)
         layout.addWidget(_title("People"))
 
+        # "Same person?" — the merge scan's questions, answered in place.
+        self._merge_strip = MergeSuggestionStrip()
+        self._merge_strip.merge_requested.connect(self._on_merge_pair)
+        self._merge_strip.reject_requested.connect(self._on_reject_pair)
+        layout.addWidget(self._merge_strip)
+
         self._model = PeopleModel()
         self._view = PeopleView(self._model)
         self._view.person_activated.connect(self.person_selected.emit)
+        self._view.rename_requested.connect(self._on_rename_person)
         layout.addWidget(self._view, 1)
 
         self._empty = QtWidgets.QLabel("No people yet — run face detection and clustering.")
@@ -156,6 +166,46 @@ class PeoplePage(QtWidgets.QWidget):
         people = data.persons()
         self._empty.setVisible(not people)
         self._model.set_people(people)
+        self._merge_strip.set_pairs(data.merge_suggestions())
+
+    # -- merge suggestions ---------------------------------------------------
+    def _action_failed(self, message: str) -> None:
+        QtWidgets.QMessageBox.warning(self, "Action failed", message)
+
+    def _on_merge_pair(self, source_id: int, target_id: int) -> None:
+        self._runner.run(
+            lambda: data.merge_person_into(source_id, target_id),
+            on_done=lambda _r: self._after_merge(target_id),
+            on_error=self._action_failed,
+        )
+
+    def _after_merge(self, target_id: int) -> None:
+        self.refresh()
+        # The natural moment to name someone: right after confirming identity.
+        person = next((p for p in data.persons() if p["id"] == target_id), None)
+        if person is not None and not person.get("display_name"):
+            self._prompt_rename(target_id)
+
+    def _on_reject_pair(self, person_a: int, person_b: int) -> None:
+        self._runner.run(
+            lambda: data.reject_merge_suggestion(person_a, person_b),
+            on_done=lambda _r: self.refresh(),
+            on_error=self._action_failed,
+        )
+
+    # -- inline rename (right-click a person card) ---------------------------
+    def _on_rename_person(self, person_id: int) -> None:
+        self._prompt_rename(person_id)
+
+    def _prompt_rename(self, person_id: int) -> None:
+        person = next((p for p in data.persons() if p["id"] == person_id), None)
+        current = (person or {}).get("display_name") or ""
+        name, ok = QtWidgets.QInputDialog.getText(
+            self, "Name person", "Who is this?", text=current
+        )
+        if ok:
+            data.rename_person(person_id, name)
+            self.refresh()
 
 
 class PersonDetailPage(QtWidgets.QWidget):

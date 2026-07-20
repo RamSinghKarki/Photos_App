@@ -145,6 +145,7 @@ class PeopleView(QtWidgets.QListView):
     """Icon-mode grid of people; emits :attr:`person_activated` with an id."""
 
     person_activated = QtCore.Signal(int)
+    rename_requested = QtCore.Signal(int)  # right-click -> "Rename person…"
 
     def __init__(self, model: PeopleModel) -> None:
         super().__init__()
@@ -166,3 +167,15 @@ class PeopleView(QtWidgets.QListView):
         person_id = index.data(PERSON_ID_ROLE)
         if person_id is not None:
             self.person_activated.emit(int(person_id))
+
+    def contextMenuEvent(self, event: QtGui.QContextMenuEvent) -> None:  # noqa: N802
+        index = self.indexAt(event.pos())
+        person_id = index.data(PERSON_ID_ROLE) if index.isValid() else None
+        if person_id is None:
+            return
+        menu = QtWidgets.QMenu(self)
+        rename = menu.addAction("Rename person…")
+        rename.triggered.connect(lambda: self.rename_requested.emit(int(person_id)))
+        open_action = menu.addAction("Open")
+        open_action.triggered.connect(lambda: self.person_activated.emit(int(person_id)))
+        menu.exec(event.globalPos())

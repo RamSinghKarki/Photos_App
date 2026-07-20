@@ -102,6 +102,7 @@ def adaptive_threshold(
     lo: float,
     hi: float,
     min_reps: int,
+    strict_min_reps: int = 0,
 ) -> Optional[float]:
     """Per-person acceptance threshold from representative consistency.
 
@@ -110,9 +111,20 @@ def adaptive_threshold(
     is enough evidence. Otherwise centers on ``global_threshold`` at consistency
     0.5 and shifts within ``[lo, hi]``: more consistent -> stricter, more varied
     -> more permissive.
+
+    ``strict_min_reps`` guards against self-inflicted fragmentation: a young
+    gallery holding a single appearance looks *very* consistent, and a raised
+    bar would lock out that person's other appearances (profile, beard, new
+    hairstyle) — spawning duplicate profiles. Until the gallery is genuinely
+    diverse (that many representatives), the threshold may only be *at or below*
+    the global default, never above it.
     """
-    if representatives_norm.shape[0] < min_reps:
+    n = representatives_norm.shape[0]
+    if n < min_reps:
         return None
     margin = hi - lo
     shift = (consistency(representatives_norm) - 0.5) * margin
-    return float(np.clip(global_threshold + shift, lo, hi))
+    threshold = float(np.clip(global_threshold + shift, lo, hi))
+    if n < strict_min_reps:
+        threshold = min(threshold, global_threshold)
+    return threshold

@@ -59,6 +59,22 @@ def test_adaptive_threshold_needs_enough_reps() -> None:
     assert adaptive_threshold(two, global_threshold=0.55, lo=0.45, hi=0.62, min_reps=3) is None
 
 
+def test_young_gallery_cannot_raise_the_bar_above_global() -> None:
+    """Anti-fragmentation: one-appearance galleries look consistent but must not
+    wall off the person's other appearances with a stricter-than-global bar."""
+    tight = _unit([[1, 0.02, 0, 0], [1, 0.0, 0, 0], [1, 0.04, 0, 0]])  # 3 reps only
+    t = adaptive_threshold(
+        tight, global_threshold=0.55, lo=0.45, hi=0.62, min_reps=3, strict_min_reps=6
+    )
+    assert t is not None and t <= 0.55  # capped at global until genuinely diverse
+
+    diverse = _unit(np.eye(6))  # 6 distinct appearances -> strictness allowed
+    t6 = adaptive_threshold(
+        diverse, global_threshold=0.55, lo=0.45, hi=0.62, min_reps=3, strict_min_reps=6
+    )
+    assert t6 is not None  # no cap applies (value governed by consistency)
+
+
 def test_adaptive_threshold_stricter_when_more_consistent() -> None:
     tight = _unit([[1, 0.02, 0, 0], [1, 0.0, 0, 0], [1, 0.04, 0, 0]])  # very consistent
     loose = _unit(np.eye(3))                                            # very spread

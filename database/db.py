@@ -777,6 +777,80 @@ def count_suggestions(cur: PgCursor) -> int:
     return int(cur.fetchone()[0])
 
 
+def fetch_person_names(cur: PgCursor) -> dict[int, Optional[str]]:
+    """person_id -> display_name (None when unnamed) for every person."""
+    cur.execute("SELECT id, display_name FROM persons")
+    return {int(r[0]): r[1] for r in cur.fetchall()}
+
+
+# ---------------------------------------------------------------------------
+# Person-merge suggestions (anti-fragmentation)
+# ---------------------------------------------------------------------------
+def _ordered_pair(a: int, b: int) -> tuple[int, int]:
+    return (a, b) if a < b else (b, a)
+
+
+def replace_merge_suggestions(
+    cur: PgCursor, rows: Sequence[tuple[int, int, float]]
+) -> None:
+    """Replace the whole suggestion set with this scan's results."""
+    cur.execute("DELETE FROM person_merge_suggestions")
+    if not rows:
+        return
+    from psycopg2.extras import execute_values
+
+    execute_values(
+        cur,
+        "INSERT INTO person_merge_suggestions (person_a, person_b, score) VALUES %s",
+        [(*_ordered_pair(int(a), int(b)), float(s)) for a, b, s in rows],
+    )
+
+
+def fetch_merge_rejections(cur: PgCursor) -> set[tuple[int, int]]:
+    """Pairs the user said are NOT the same person (ordered a < b)."""
+    cur.execute("SELECT person_a, person_b FROM person_merge_rejections")
+    return {(int(r[0]), int(r[1])) for r in cur.fetchall()}
+
+
+def record_merge_rejection(cur: PgCursor, person_a: int, person_b: int) -> None:
+    """Remember 'not the same person' and drop the pending suggestion."""
+    a, b = _ordered_pair(person_a, person_b)
+    cur.execute(
+        "INSERT INTO person_merge_rejections (person_a, person_b) VALUES (%s, %s) "
+        "ON CONFLICT (person_a, person_b) DO NOTHING",
+        (a, b),
+    )
+    cur.execute(
+        "DELETE FROM person_merge_suggestions WHERE person_a = %s AND person_b = %s",
+        (a, b),
+    )
+
+
+def list_merge_suggestions_detail(cur: PgCursor) -> list[dict[str, Any]]:
+    """Pending 'Same person?' pairs with names, counts and covers, best first."""
+    cur.execute(
+        """
+        SELECT s.person_a, s.person_b, s.score,
+               pa.display_name, pa.face_count, fa.crop_path,
+               pb.display_name, pb.face_count, fb.crop_path
+          FROM person_merge_suggestions s
+          JOIN persons pa ON pa.id = s.person_a
+          JOIN persons pb ON pb.id = s.person_b
+          LEFT JOIN faces fa ON fa.id = pa.cover_face_id
+          LEFT JOIN faces fb ON fb.id = pb.cover_face_id
+         ORDER BY s.score DESC, s.id
+        """
+    )
+    return [
+        {
+            "person_a": int(r[0]), "person_b": int(r[1]), "score": float(r[2]),
+            "name_a": r[3], "count_a": int(r[4]), "cover_a": r[5],
+            "name_b": r[6], "count_b": int(r[7]), "cover_b": r[8],
+        }
+        for r in cur.fetchall()
+    ]
+
+
 def fetch_rejections(cur: PgCursor) -> dict[int, set[int]]:
     """Return person_id -> set(face_id) of rejected pairs (recognition blocklist)."""
     cur.execute(

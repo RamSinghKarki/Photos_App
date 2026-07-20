@@ -90,6 +90,18 @@ def merge_person_into(source_id: int, target_id: int) -> None:
         rebuild_person_gallery(cur, target_id)
 
 
+def merge_suggestions() -> list[dict[str, Any]]:
+    """Pending 'Same person?' pairs (names, counts, covers), best evidence first."""
+    with timer("query.merge_suggestions"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_merge_suggestions_detail(cur)
+
+
+def reject_merge_suggestion(person_a: int, person_b: int) -> None:
+    """Remember that two suggested profiles are NOT the same person."""
+    with db.connection() as conn, conn.cursor() as cur:
+        db.record_merge_rejection(cur, person_a, person_b)
+
+
 def suggestions_for_person(person_id: int) -> list[dict[str, Any]]:
     """Pending 'Is this <person>?' suggestions (best score first)."""
     with timer("query.suggestions"), db.connection() as conn, conn.cursor() as cur:

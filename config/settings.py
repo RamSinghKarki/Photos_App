@@ -176,6 +176,23 @@ class Settings:
     adaptive_threshold_min_reps: int = field(
         default_factory=lambda: _env_int("PHOTOSPHERE_ADAPTIVE_THRESHOLD_MIN_REPS", 3)
     )
+    # A person may only demand a STRICTER-than-global match once their gallery is
+    # genuinely diverse (this many representatives). A young, single-appearance
+    # person otherwise looks "very consistent" and walls off its own other
+    # appearances — the main cause of duplicate profiles for one identity.
+    adaptive_strict_min_reps: int = field(
+        default_factory=lambda: _env_int("PHOTOSPHERE_ADAPTIVE_STRICT_MIN_REPS", 6)
+    )
+    # Person-merge scan: cross-person similarity (best representative pair) at or
+    # above `suggest` raises a "Same person?" question in the UI; at or above
+    # `auto`, two UNNAMED persons are merged automatically (named people are
+    # never auto-merged). Both compared after every recognition run.
+    merge_suggest_threshold: float = field(
+        default_factory=lambda: float(_env_str("PHOTOSPHERE_MERGE_SUGGEST", "0.50"))
+    )
+    merge_auto_threshold: float = field(
+        default_factory=lambda: float(_env_str("PHOTOSPHERE_MERGE_AUTO", "0.70"))
+    )
     # Active learning: a face whose best match falls within this margin *below* a
     # person's acceptance threshold becomes a "Is this <name>?" suggestion rather
     # than being dropped. Wider = more (but less certain) suggestions.

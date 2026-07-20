@@ -106,6 +106,20 @@ The self-improving recognition vision is now complete end-to-end: represent
 context) → adapt (fold back in) → correct (rejections) → show (appearances) →
 ask (active learning). Models stay fixed and local; the knowledge grows.
 
+- **Anti-fragmentation — one person, one profile.** Clustering can split an
+  identity across appearances (frontal vs profile, beard vs clean-shaven,
+  occlusions). Three defenses now run automatically: (1) a **person-merge scan**
+  after every update compares persons by their galleries — obvious duplicates
+  (both *unnamed*, similarity ≥ `PHOTOSPHERE_MERGE_AUTO`) are merged
+  automatically; likely ones become **"Same person?"** questions on the People
+  page (Merge / Not the same — a "no" is remembered forever, and *named* people
+  are never auto-merged); (2) a young single-appearance gallery can no longer
+  raise its threshold above the global bar and wall out its own other
+  appearances (`PHOTOSPHERE_ADAPTIVE_STRICT_MIN_REPS`); (3) low-quality
+  detections (occluded/blurry/tiny) may *join* people but can no longer *found*
+  new ones. Merging invites naming; person cards also rename via right-click.
+  (`clustering/merge_scan.py`, `viewer/merge_strip.py`.)
+
 ### Future refinements
 
 - **Richer context**: co-occurring people ("seen with family") and event
