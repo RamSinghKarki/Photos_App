@@ -50,7 +50,7 @@ def test_pipeline_worker_runs_full_chain(qapp, clean_db, photo_tree: Path) -> No
 
     assert results, "pipeline did not finish"
     # All stages ran, in order.
-    assert steps[:4] == ["Scanning", "Building thumbnails", "Detecting faces", "Recognizing people"]
+    assert steps[:5] == ["Scanning", "Building thumbnails", "Fingerprinting for duplicates", "Detecting faces", "Recognizing people"]
 
     with db.connection() as conn, conn.cursor() as cur:
         stats = db.library_stats(cur)

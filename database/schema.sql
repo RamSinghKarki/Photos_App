@@ -133,6 +133,12 @@ ALTER TABLE persons ADD COLUMN IF NOT EXISTS centroid vector(512);
 -- global default" — a person needs a few representatives before it adapts.
 ALTER TABLE persons ADD COLUMN IF NOT EXISTS adaptive_threshold REAL;
 
+-- Perceptual hash (dHash, 64-bit) for visual duplicate detection. Added
+-- additively so existing libraries migrate with no data loss; NULL means the
+-- duplicates module has not processed the photo yet.
+ALTER TABLE photos ADD COLUMN IF NOT EXISTS phash BIGINT;
+CREATE INDEX IF NOT EXISTS idx_photos_phash ON photos (phash) WHERE phash IS NOT NULL;
+
 -- ---------------------------------------------------------------------------
 -- person_embeddings: a person's *representative gallery* — a diverse, quality-
 -- gated set of face embeddings, not a single average. Recognizing a person

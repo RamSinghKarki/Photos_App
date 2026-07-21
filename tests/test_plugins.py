@@ -58,9 +58,9 @@ def test_a_new_plugin_slots_in_without_core_changes() -> None:
     manager._plugins.append(extra)  # what registering a real plugin would do
 
     names = [p.name for p in manager.plugins()]
-    assert names == ["thumbnails", "faces", "people", "clip", "ocr", "objects"]
+    assert names == ["thumbnails", "phash", "faces", "people", "clip", "ocr", "objects"]
 
 
 def test_default_manager_order() -> None:
     names = [p.name for p in default_manager().plugins()]
-    assert names == ["thumbnails", "faces", "people", "clip", "ocr"]
+    assert names == ["thumbnails", "phash", "faces", "people", "clip", "ocr"]

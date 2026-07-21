@@ -16,6 +16,7 @@ from pipeline.plugins import (
     PeoplePlugin,
     Plugin,
     ProgressCallback,
+    PhashPlugin,
     ThumbnailPlugin,
 )
 from utils.logging_setup import get_logger
@@ -69,6 +70,7 @@ def default_manager(
     """
     return PluginManager([
         ThumbnailPlugin(),
+        PhashPlugin(),
         FacePlugin(detector_factory),
         PeoplePlugin(),
         ClipPlugin(clip_factory),

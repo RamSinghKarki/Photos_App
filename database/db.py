@@ -924,6 +924,38 @@ def fetch_rejections(cur: PgCursor) -> dict[int, set[int]]:
     return rejections
 
 
+def list_photos_needing_phash(cur: PgCursor, limit: int = 500) -> list[tuple[int, str]]:
+    """(id, file_path) of photos the duplicates module has not hashed yet."""
+    cur.execute(
+        "SELECT id, file_path FROM photos WHERE phash IS NULL ORDER BY id LIMIT %s",
+        (limit,),
+    )
+    return [(int(r[0]), r[1]) for r in cur.fetchall()]
+
+
+def count_photos_needing_phash(cur: PgCursor) -> int:
+    cur.execute("SELECT count(*) FROM photos WHERE phash IS NULL")
+    return int(cur.fetchone()[0])
+
+
+def set_phashes(cur: PgCursor, rows: Sequence[tuple[int, Optional[int]]]) -> None:
+    """Store computed (photo_id, signed 64-bit phash) values in one batch.
+
+    Unhashable photos store -1 (sentinel: processed, no hash) so they are
+    never retried on every run; a NULL still means "not processed yet".
+    """
+    if not rows:
+        return
+    from psycopg2.extras import execute_values
+
+    execute_values(
+        cur,
+        "UPDATE photos AS p SET phash = v.phash, updated_at = now() "
+        "FROM (VALUES %s) AS v (id, phash) WHERE p.id = v.id",
+        [(pid, -1 if ph is None else ph) for pid, ph in rows],
+    )
+
+
 def optimize_after_import(cur: PgCursor) -> None:
     """Post-import maintenance: retrain vector indexes and refresh planner stats.
 

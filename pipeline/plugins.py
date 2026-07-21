@@ -141,6 +141,21 @@ class ClipPlugin(_BackendPlugin):
         return f"+{summary.embedded} search"
 
 
+class PhashPlugin:
+    name = "phash"
+    title = "Fingerprinting for duplicates"
+    ai = False  # pure Pillow; no model required
+
+    def is_available(self) -> bool:
+        return True
+
+    def run(self, on_progress: Optional[ProgressCallback]) -> str:
+        from duplicates.processor import process_phashes
+
+        summary = process_phashes(on_progress=on_progress)
+        return f"+{summary.hashed} fingerprints"
+
+
 class OcrPlugin(_BackendPlugin):
     name = "ocr"
     title = "Reading text (OCR)"
