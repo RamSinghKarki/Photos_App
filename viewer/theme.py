@@ -23,35 +23,23 @@ TEXT_MUTED = "#98a0ad"     # secondary/metadata text
 
 RADIUS = 8                 # default corner radius (px)
 
-# Sidebar groups -> (label, page-key). Icons come from viewer.icons keyed by
-# page-key; the design uses drawn line-art, never emoji.
-SIDEBAR_SECTIONS: list[tuple[str, list[tuple[str, str]]]] = [
-    ("Library", [
-        ("Dashboard", "dashboard"),
-        ("Photos", "photos"),
-        ("Timeline", "timeline"),
-        ("Videos", "videos"),
-    ]),
-    ("AI", [
-        ("People", "people"),
-        ("Search", "search"),
-        ("Objects", "objects"),
-        ("Similar Photos", "similar"),
-    ]),
-    ("Organization", [
-        ("Albums", "albums"),
-        ("Favorites", "favorites"),
-        ("Archive", "archive"),
-        ("Trash", "trash"),
-    ]),
-    ("System", [
-        ("Settings", "settings"),
-        ("About", "about"),
-    ]),
-]
+# Sidebar groups and the implemented set derive from the single page registry
+# (viewer/registry.py) — adding a page is ONE PageSpec entry, never four edits.
+# Icons come from viewer.icons keyed by page-key; drawn line-art, never emoji.
+from viewer.registry import implemented_keys, sidebar_sections  # noqa: E402
 
-# Page keys fully implemented here; everything else renders a "planned" page.
-IMPLEMENTED_PAGES = {"dashboard", "photos", "people", "search", "timeline"}
+SIDEBAR_SECTIONS: list[tuple[str, list[tuple[str, str]]]] = sidebar_sections()
+IMPLEMENTED_PAGES = implemented_keys()
+
+# --- Design tokens (PDD §4) — the only sanctioned spacing/radius/motion values.
+# Components take values from here; literal magic numbers in pages are a review
+# failure once the Phase-1 component kit lands.
+SPACING = (4, 8, 12, 16, 24, 32, 48)          # px steps; nothing arbitrary
+RADIUS_SM, RADIUS_MD, RADIUS_LG = 8, 12, 16   # controls / cards / dialogs
+MOTION_MS = {
+    "hover": 120, "selection": 150, "fade": 150,
+    "dialog": 180, "sidebar": 200, "photo_open": 220,
+}  # hard cap 250 ms (PDD); every animation interruptible
 
 
 def build_stylesheet() -> str:

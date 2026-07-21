@@ -28,18 +28,11 @@ from viewer.timeline_page import TimelinePage
 
 logger = get_logger("viewer.main")
 
-# Honest notes for sections whose backend module is not built yet.
-_PLANNED_NOTES = {
-    "videos": "Videos — planned. Video indexing is a future module.",
-    "objects": "Object Detection — planned AI module.",
-    "similar": "Similar Photos — planned AI module.",
-    "albums": "Albums — planned organization module.",
-    "favorites": "Favorites — planned organization module.",
-    "archive": "Archive — planned organization module.",
-    "trash": "Trash — planned. Deletions will be database-only; originals are never touched.",
-    "settings": "Settings — planned configuration module.",
-    "about": "PhotoSphere AI — a fully offline, local AI photo manager.",
-}
+# Honest notes for sections whose backend module is not built yet — derived
+# from the single page registry so navigation can never drift out of sync.
+from viewer.registry import planned_notes  # noqa: E402
+
+_PLANNED_NOTES = planned_notes()
 
 
 class MainWindow(QtWidgets.QMainWindow):
