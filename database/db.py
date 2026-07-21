@@ -765,6 +765,38 @@ def list_suggestions_for_person(cur: PgCursor, person_id: int) -> list[dict[str,
     ]
 
 
+def count_merge_suggestions(cur: PgCursor) -> int:
+    """Number of pending 'Same person?' pairs."""
+    cur.execute("SELECT count(*) FROM person_merge_suggestions")
+    return int(cur.fetchone()[0])
+
+
+def list_recent_photos(cur: PgCursor, limit: int) -> list[tuple[int, str, Optional[str], Any]]:
+    """Most recently imported photos (insertion order), newest first."""
+    cur.execute(
+        "SELECT id, file_path, thumbnail_path, taken_at FROM photos "
+        "ORDER BY id DESC LIMIT %s",
+        (limit,),
+    )
+    return [(int(r[0]), r[1], r[2], r[3]) for r in cur.fetchall()]
+
+
+def list_on_this_day(cur: PgCursor, month: int, day: int, limit: int
+                     ) -> list[tuple[int, str, Optional[str], Any]]:
+    """Photos taken on this calendar day in any past year, newest first."""
+    cur.execute(
+        """
+        SELECT id, file_path, thumbnail_path, taken_at FROM photos
+         WHERE taken_at IS NOT NULL
+           AND EXTRACT(MONTH FROM taken_at) = %s
+           AND EXTRACT(DAY FROM taken_at) = %s
+         ORDER BY taken_at DESC LIMIT %s
+        """,
+        (month, day, limit),
+    )
+    return [(int(r[0]), r[1], r[2], r[3]) for r in cur.fetchall()]
+
+
 def count_suggestions(cur: PgCursor) -> int:
     """Total pending suggestions for still-ungrouped faces."""
     cur.execute(

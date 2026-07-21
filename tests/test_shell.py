@@ -76,6 +76,26 @@ def test_inspector_shows_and_clears(qapp) -> None:
     assert not insp._empty.isHidden()    # idle state restored
 
 
+def test_dashboard_activity_center(qapp, clean_db) -> None:
+    from viewer.pages import DashboardPage
+
+    page = DashboardPage()
+    nav: list[str] = []
+    page.navigate.connect(nav.append)
+    page.refresh()  # empty library
+
+    # Greeting is time-of-day; summary and empty state present.
+    assert page._greeting.text() in ("Good morning", "Good afternoon", "Good evening")
+    assert "0 photos" in page._summary.text()
+    assert not page._empty.isHidden()             # empty-library prompt
+    assert page._review_title.text() == "All caught up"
+    assert page._recent.isHidden()                # no strips with no photos
+
+    # The review card routes to People.
+    page._review_card.clicked.emit()
+    assert nav == ["people"]
+
+
 def test_main_window_has_three_pane_shell(qapp, clean_db) -> None:
     from viewer.main_window import MainWindow
 

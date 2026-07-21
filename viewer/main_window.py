@@ -96,6 +96,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self._people.person_selected.connect(self._open_person)
         self._person_detail.back_requested.connect(lambda: self.show_page("people"))
 
+        self._dashboard.navigate.connect(self.show_page)
+        self._dashboard.photo_activated.connect(
+            lambda pid: self._open_viewer(self._dashboard.current_photo_ids(), pid)
+        )
+        self._dashboard.import_requested.connect(self._on_import)
+        self._dashboard.reindex_requested.connect(self._on_reindex)
+
         self._page_keys: dict[str, int] = {}
         for key, widget in (
             ("dashboard", self._dashboard),
@@ -140,7 +147,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(root)
 
         self._install_shortcuts()
-        self._status.set_gpu(detect_gpu().badge())
+        gpu_badge = detect_gpu().badge()
+        self._status.set_gpu(gpu_badge)
+        self._dashboard.set_gpu_badge(gpu_badge)
         self.setAcceptDrops(True)  # drop a folder anywhere to import it
         self._restore_state()
         self.refresh_all()

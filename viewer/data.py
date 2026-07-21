@@ -67,6 +67,27 @@ def recent_runs(limit: int = 5) -> list[dict[str, Any]]:
         return db.recent_scan_runs(cur, limit)
 
 
+def recent_photos(limit: int = 12) -> list[tuple]:
+    """Most recently imported photos, newest first (dashboard strip)."""
+    with timer("query.recent_photos"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_recent_photos(cur, limit)
+
+
+def on_this_day(limit: int = 12) -> list[tuple]:
+    """Photos taken on today's calendar day in past years."""
+    import datetime as _dt
+
+    today = _dt.date.today()
+    with timer("query.on_this_day"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_on_this_day(cur, today.month, today.day, limit)
+
+
+def review_count() -> int:
+    """Everything awaiting the user in Review: face + merge questions."""
+    with db.connection() as conn, conn.cursor() as cur:
+        return db.count_suggestions(cur) + db.count_merge_suggestions(cur)
+
+
 # -- writes (people editing) ------------------------------------------------
 def rename_person(person_id: int, name: Optional[str]) -> None:
     """Set or clear a person's display name."""

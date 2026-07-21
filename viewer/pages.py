@@ -8,15 +8,15 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from viewer import data
 from viewer.actions import ActionRunner
 from viewer.appearance_strip import AppearanceStrip, SuggestionStrip
-from viewer.components import StatCard, _human_bytes
 from viewer.gallery import PhotoGrid, PhotoGridModel
 from viewer.merge_strip import MergeSuggestionStrip
 from viewer.people_view import PeopleModel, PeopleView
+from viewer.photo_strip import PhotoStrip
 from viewer import theme
 
 
@@ -26,52 +26,179 @@ def _title(text: str) -> QtWidgets.QLabel:
     return label
 
 
-class DashboardPage(QtWidgets.QWidget):
-    """Landing page: headline stats and recent activity."""
+class _ClickCard(QtWidgets.QFrame):
+    """A card that behaves like a button (whole surface clickable)."""
+
+    clicked = QtCore.Signal()
 
     def __init__(self) -> None:
         super().__init__()
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(24, 20, 24, 20)
+        self.setObjectName("Card")
+        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+
+    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:  # noqa: N802
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+
+
+class DashboardPage(QtWidgets.QWidget):
+    """The activity center (PDD §6.1): what's happening, not raw statistics.
+
+    A time-of-day greeting, an "AI needs your help" card, recent + on-this-day
+    memory strips, library health and quick actions. Emits :attr:`navigate` to
+    change page and :attr:`photo_activated` to open a photo.
+    """
+
+    navigate = QtCore.Signal(str)          # page key
+    photo_activated = QtCore.Signal(int)
+    import_requested = QtCore.Signal()
+    reindex_requested = QtCore.Signal()
+
+    def __init__(self) -> None:
+        super().__init__()
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        page_layout = QtWidgets.QVBoxLayout(self)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.addWidget(scroll)
+
+        body = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(body)
+        layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(16)
+        scroll.setWidget(body)
 
-        layout.addWidget(_title("Dashboard"))
+        self._greeting = QtWidgets.QLabel("Welcome back")
+        self._greeting.setStyleSheet("font-size: 30px; font-weight: 700;")
+        self._summary = QtWidgets.QLabel("")
+        self._summary.setObjectName("Muted")
+        layout.addWidget(self._greeting)
+        layout.addWidget(self._summary)
 
+        # --- top cards: Review · Health · Quick actions ---
         cards = QtWidgets.QHBoxLayout()
         cards.setSpacing(14)
-        self._photos = StatCard("Indexed Photos", accent=theme.PRIMARY)
-        self._faces = StatCard("Faces Found", accent=theme.ACCENT)
-        self._people = StatCard("People", accent=theme.PRIMARY)
-        self._storage = StatCard("Storage Used", accent=theme.WARNING)
-        for card in (self._photos, self._faces, self._people, self._storage):
-            cards.addWidget(card)
+
+        self._review_card = _ClickCard()
+        self._review_card.clicked.connect(lambda: self.navigate.emit("people"))
+        rc = QtWidgets.QVBoxLayout(self._review_card)
+        rc.setContentsMargins(18, 16, 18, 16)
+        self._review_title = QtWidgets.QLabel("AI needs your help")
+        self._review_title.setObjectName("H2")
+        self._review_detail = QtWidgets.QLabel("Nothing to review")
+        self._review_detail.setObjectName("Muted")
+        self._review_detail.setWordWrap(True)
+        rc.addWidget(self._review_title)
+        rc.addWidget(self._review_detail)
+        rc.addStretch(1)
+        cards.addWidget(self._review_card, 1)
+
+        health = QtWidgets.QFrame()
+        health.setObjectName("Card")
+        hc = QtWidgets.QVBoxLayout(health)
+        hc.setContentsMargins(18, 16, 18, 16)
+        htitle = QtWidgets.QLabel("Library health")
+        htitle.setObjectName("H2")
+        self._health_gpu = QtWidgets.QLabel("—")
+        self._health_gpu.setObjectName("Muted")
+        self._health_kb = QtWidgets.QLabel("Knowledge base · Healthy")
+        self._health_kb.setObjectName("Muted")
+        self._health_index = QtWidgets.QLabel("—")
+        self._health_index.setObjectName("Muted")
+        hc.addWidget(htitle)
+        for w in (self._health_gpu, self._health_kb, self._health_index):
+            hc.addWidget(w)
+        hc.addStretch(1)
+        cards.addWidget(health, 1)
+
+        actions = QtWidgets.QFrame()
+        actions.setObjectName("Card")
+        ac = QtWidgets.QVBoxLayout(actions)
+        ac.setContentsMargins(18, 16, 18, 16)
+        atitle = QtWidgets.QLabel("Quick actions")
+        atitle.setObjectName("H2")
+        ac.addWidget(atitle)
+        row = QtWidgets.QHBoxLayout()
+        import_btn = QtWidgets.QPushButton("Import")
+        import_btn.setObjectName("Primary")
+        import_btn.clicked.connect(self.import_requested.emit)
+        search_btn = QtWidgets.QPushButton("Search")
+        search_btn.clicked.connect(lambda: self.navigate.emit("search"))
+        update_btn = QtWidgets.QPushButton("Update")
+        update_btn.clicked.connect(self.reindex_requested.emit)
+        for b in (import_btn, search_btn, update_btn):
+            row.addWidget(b)
+        row.addStretch(1)
+        ac.addLayout(row)
+        ac.addStretch(1)
+        cards.addWidget(actions, 1)
         layout.addLayout(cards)
 
-        activity_title = QtWidgets.QLabel("Recent Activity")
-        activity_title.setObjectName("H2")
-        layout.addWidget(activity_title)
+        # --- memory strips ---
+        self._recent_title = QtWidgets.QLabel("Recently added")
+        self._recent_title.setObjectName("H2")
+        layout.addWidget(self._recent_title)
+        self._recent = PhotoStrip()
+        self._recent.photo_activated.connect(self.photo_activated.emit)
+        layout.addWidget(self._recent)
 
-        self._activity = QtWidgets.QListWidget()
-        self._activity.setObjectName("Card")
-        layout.addWidget(self._activity, 1)
+        self._otd_title = QtWidgets.QLabel("On this day")
+        self._otd_title.setObjectName("H2")
+        layout.addWidget(self._otd_title)
+        self._otd = PhotoStrip()
+        self._otd.photo_activated.connect(self.photo_activated.emit)
+        layout.addWidget(self._otd)
+
+        self._empty = QtWidgets.QLabel(
+            "Your library is empty — press Import to add your photos."
+        )
+        self._empty.setObjectName("Muted")
+        layout.addWidget(self._empty)
+        layout.addStretch(1)
+
+    def current_photo_ids(self) -> list[int]:
+        return [t._photo_id for t in self._recent._thumbs]
+
+    def set_gpu_badge(self, badge: str) -> None:
+        self._health_gpu.setText(badge.replace("GPU:", "AI ·").strip())
 
     def refresh(self) -> None:
-        stats = data.library_stats()
-        self._photos.set_value(f"{stats['photos']:,}")
-        self._faces.set_value(f"{stats['faces']:,}")
-        self._people.set_value(f"{stats['persons']:,}")
-        self._storage.set_value(_human_bytes(stats["storage_bytes"]))
+        import datetime as _dt
 
-        self._activity.clear()
-        runs = data.recent_runs(8)
-        if not runs:
-            self._activity.addItem("No scans yet — use Import Folder to add photos.")
-        for run in runs:
-            when = run["started_at"].strftime("%Y-%m-%d %H:%M") if run["started_at"] else "—"
-            self._activity.addItem(
-                f"{when}   {run['root_path']}   "
-                f"(+{run['processed']} new, {run['duplicates']} dup, {run['errors']} err)"
-            )
+        hour = _dt.datetime.now().hour
+        self._greeting.setText(
+            "Good morning" if hour < 12 else "Good afternoon" if hour < 18 else "Good evening"
+        )
+        stats = data.library_stats()
+        photos = stats.get("photos", 0)
+        self._summary.setText(
+            f"{photos:,} photos · {stats.get('persons', 0):,} people · "
+            f"{stats.get('faces', 0):,} faces"
+        )
+        self._empty.setVisible(photos == 0)
+
+        review = data.review_count()
+        if review:
+            self._review_title.setText(f"AI needs your help  ·  {review}")
+            self._review_detail.setText(
+                f"{review} question(s) waiting — open People to review.")
+        else:
+            self._review_title.setText("All caught up")
+            self._review_detail.setText("Nothing needs your attention right now.")
+
+        self._health_kb.setText("Knowledge base · Healthy" if photos else "Knowledge base · Empty")
+        self._health_index.setText(f"{photos:,} photos indexed" if photos else "Nothing indexed yet")
+
+        recent = data.recent_photos(12)
+        self._recent.set_photos(recent)
+        self._recent_title.setVisible(bool(recent))
+        self._recent.setVisible(bool(recent))
+
+        otd = data.on_this_day(12)
+        self._otd.set_photos(otd)
+        self._otd_title.setVisible(bool(otd))
+        self._otd.setVisible(bool(otd))
 
 
 class GalleryPage(QtWidgets.QWidget):
