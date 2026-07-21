@@ -1,0 +1,61 @@
+name: Build Windows installer
+
+# Produces the PhotoSphere AI Windows installer on a real Windows runner —
+# the only place a PyInstaller Windows build can be made and verified.
+# Runs on demand and on version tags; a tagged build is attached to a release.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write        # needed to attach the installer to a release on a tag
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build dependencies (lite tier)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-build.txt
+
+      - name: Smoke-test that the app imports (offscreen)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -c "from viewer.app import create_application; create_application([]); print('import OK')"
+
+      - name: Read app version
+        id: ver
+        shell: bash
+        run: echo "version=$(python -c 'from utils.version import __version__; print(__version__)')" >> "$GITHUB_OUTPUT"
+
+      - name: Build with PyInstaller
+        run: pyinstaller packaging/photosphere.spec
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
+        run: iscc "/DAppVersion=${{ steps.ver.outputs.version }}" packaging/photosphere.iss
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoSphere-Setup-${{ steps.ver.outputs.version }}
+          path: packaging/Output/PhotoSphere-Setup-*.exe
+          if-no-files-found: error
+
+      - name: Attach installer to release (tagged builds only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: packaging/Output/PhotoSphere-Setup-*.exe

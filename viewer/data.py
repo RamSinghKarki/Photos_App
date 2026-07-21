@@ -1,0 +1,316 @@
+"""Read-only data access for the Viewer.
+
+The UI never writes SQL: it calls these small functions, which delegate to the
+named helpers in :mod:`database.db` over short-lived connections and return
+plain Python values. Keeping all database access here means the widgets stay
+free of connection handling.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Optional
+
+from database import db
+from utils.perf import timer
+
+
+def library_stats() -> dict[str, int]:
+    """Headline counts for the dashboard / status bar."""
+    with timer("query.library_stats"), db.connection() as conn, conn.cursor() as cur:
+        return db.library_stats(cur)
+
+
+def knowledge_stats() -> dict[str, Any]:
+    """Everything the app has learned about the library (Insights page)."""
+    with timer("query.knowledge_stats"), db.connection() as conn, conn.cursor() as cur:
+        return db.knowledge_stats(cur)
+
+
+def photo_grid(
+    limit: int,
+    offset: int = 0,
+    person_id: Optional[int] = None,
+    search: Optional[str] = None,
+) -> list[tuple[int, str, Optional[str], Any]]:
+    """A page of (id, file_path, thumbnail_path, taken_at) rows for the gallery."""
+    with timer("query.photo_grid"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_photo_grid(cur, limit, offset, person_id, search)
+
+
+def photo_detail(photo_id: int) -> Optional[dict[str, Any]]:
+    """Full metadata for one photo, or None."""
+    with timer("query.photo_detail"), db.connection() as conn, conn.cursor() as cur:
+        return db.get_photo_detail(cur, photo_id)
+
+
+def persons() -> list[dict[str, Any]]:
+    """People with cover-face crop paths, largest first."""
+    with timer("query.persons"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_persons_with_cover(cur)
+
+
+def photo_people(photo_id: int) -> list[dict[str, Any]]:
+    """People appearing in one photo (for the viewer's People tab)."""
+    with timer("query.photo_people"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_photo_people(cur, photo_id)
+
+
+def person_profile(person_id: int) -> dict[str, Any]:
+    """First/last seen, photo count and cover for a person's profile header."""
+    with timer("query.person_profile"), db.connection() as conn, conn.cursor() as cur:
+        return db.person_profile_stats(cur, person_id)
+
+
+def appears_with(person_id: int, limit: int = 8) -> list[dict[str, Any]]:
+    """People who share photos with this person (the 'appears with' row)."""
+    with timer("query.appears_with"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_appears_with(cur, person_id, limit)
+
+
+def photos_brief(photo_ids: list[int]) -> list[tuple]:
+    """Thumbnail rows for a set of ids in order (viewer filmstrip)."""
+    with timer("query.photos_brief"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_photos_brief(cur, photo_ids)
+
+
+def similar_photos(photo_id: int, limit: int = 100) -> list[tuple]:
+    """Photos visually similar to the given one (CLIP nearest neighbours)."""
+    with timer("query.similar"), db.connection() as conn, conn.cursor() as cur:
+        return db.find_similar_photos(cur, photo_id, limit)
+
+
+def timeline_buckets() -> list[tuple[int, int, int]]:
+    """(year, month, count) buckets for the Timeline, newest first."""
+    with timer("query.timeline_buckets"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_timeline_buckets(cur)
+
+
+def photos_by_month(year: int, month: int, limit: int, offset: int = 0) -> list[tuple]:
+    """A page of photos captured in a given month, newest first."""
+    with timer("query.photos_by_month"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_photos_by_month(cur, year, month, limit, offset)
+
+
+def recent_runs(limit: int = 5) -> list[dict[str, Any]]:
+    """Recent scan runs for the dashboard activity feed."""
+    with timer("query.recent_runs"), db.connection() as conn, conn.cursor() as cur:
+        return db.recent_scan_runs(cur, limit)
+
+
+def recent_photos(limit: int = 12) -> list[tuple]:
+    """Most recently imported photos, newest first (dashboard strip)."""
+    with timer("query.recent_photos"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_recent_photos(cur, limit)
+
+
+def on_this_day(limit: int = 12) -> list[tuple]:
+    """Photos taken on today's calendar day in past years."""
+    import datetime as _dt
+
+    today = _dt.date.today()
+    with timer("query.on_this_day"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_on_this_day(cur, today.month, today.day, limit)
+
+
+# -- duplicates -------------------------------------------------------------
+def duplicate_groups(limit: int = 50) -> list[dict[str, Any]]:
+    """Pending visual-duplicate groups (biggest first) for review."""
+    from duplicates.finder import find_duplicate_groups
+
+    with timer("query.duplicate_groups"), db.connection() as conn, conn.cursor() as cur:
+        return find_duplicate_groups(cur, limit=limit)
+
+
+def keep_duplicate(keep_id: int, member_ids: list[int]) -> None:
+    """Resolve a group: keep one photo, hide the rest (never deleted)."""
+    with db.connection() as conn, conn.cursor() as cur:
+        db.mark_duplicates(cur, keep_id, member_ids)
+
+
+def dismiss_duplicate_group(member_ids: list[int]) -> None:
+    """Remember 'these are different photos' — never ask about this set again."""
+    with db.connection() as conn, conn.cursor() as cur:
+        db.record_duplicate_dismissal(cur, member_ids)
+
+
+def restore_duplicate(photo_id: int) -> None:
+    """Bring a hidden duplicate back into the library view."""
+    with db.connection() as conn, conn.cursor() as cur:
+        db.restore_duplicate(cur, photo_id)
+
+
+def hidden_duplicates(limit: int = 200) -> list[tuple]:
+    """Photos currently hidden by a Keep verdict (restorable)."""
+    with db.connection() as conn, conn.cursor() as cur:
+        return db.list_hidden_duplicates(cur, limit)
+
+
+def duplicate_review_count() -> int:
+    """Number of pending duplicate groups awaiting a decision."""
+    from duplicates.finder import find_duplicate_groups
+
+    with db.connection() as conn, conn.cursor() as cur:
+        return len(find_duplicate_groups(cur, limit=10_000))
+
+
+# -- albums -----------------------------------------------------------------
+def albums() -> list[dict[str, Any]]:
+    """All albums with photo counts and covers (for the Albums page)."""
+    with timer("query.albums"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_albums(cur)
+
+
+def create_album(name: str) -> int:
+    with db.connection() as conn, conn.cursor() as cur:
+        return db.create_album(cur, name)
+
+
+def rename_album(album_id: int, name: str) -> None:
+    with db.connection() as conn, conn.cursor() as cur:
+        db.rename_album(cur, album_id, name)
+
+
+def delete_album(album_id: int) -> None:
+    with db.connection() as conn, conn.cursor() as cur:
+        db.delete_album(cur, album_id)
+
+
+def add_to_album(album_id: int, photo_ids: list[int]) -> int:
+    with db.connection() as conn, conn.cursor() as cur:
+        return db.add_photos_to_album(cur, album_id, photo_ids)
+
+
+def remove_from_album(album_id: int, photo_ids: list[int]) -> None:
+    with db.connection() as conn, conn.cursor() as cur:
+        db.remove_photos_from_album(cur, album_id, photo_ids)
+
+
+def album_photos(album_id: int, limit: int, offset: int = 0) -> list[tuple]:
+    """A page of an album's photos, newest addition first."""
+    with db.connection() as conn, conn.cursor() as cur:
+        return db.list_album_photos(cur, album_id, limit, offset)
+
+
+def review_count() -> int:
+    """Everything awaiting the user in Review: face + merge questions."""
+    with db.connection() as conn, conn.cursor() as cur:
+        return db.count_suggestions(cur) + db.count_merge_suggestions(cur)
+
+
+# -- writes (people editing) ------------------------------------------------
+def rename_person(person_id: int, name: Optional[str]) -> None:
+    """Set or clear a person's display name."""
+    with db.connection() as conn, conn.cursor() as cur:
+        db.rename_person(cur, person_id, name)
+
+
+def delete_person(person_id: int) -> None:
+    """Delete a person group (its faces are un-grouped, not deleted)."""
+    with db.connection() as conn, conn.cursor() as cur:
+        db.delete_person(cur, person_id)
+
+
+def merge_person_into(source_id: int, target_id: int) -> None:
+    """Merge one person into another (faces move to the target)."""
+    from clustering.incremental import rebuild_person_gallery
+
+    with db.connection() as conn, conn.cursor() as cur:
+        db.merge_persons(cur, source_id, target_id)
+        # Re-curate the target's representative gallery over its new membership.
+        rebuild_person_gallery(cur, target_id)
+
+
+def merge_suggestions() -> list[dict[str, Any]]:
+    """Pending 'Same person?' pairs (names, counts, covers), best evidence first."""
+    with timer("query.merge_suggestions"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_merge_suggestions_detail(cur)
+
+
+def reject_merge_suggestion(person_a: int, person_b: int) -> None:
+    """Remember that two suggested profiles are NOT the same person."""
+    with db.connection() as conn, conn.cursor() as cur:
+        db.record_merge_rejection(cur, person_a, person_b)
+
+
+def suggestions_for_person(person_id: int) -> list[dict[str, Any]]:
+    """Pending 'Is this <person>?' suggestions (best score first)."""
+    with timer("query.suggestions"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_suggestions_for_person(cur, person_id)
+
+
+def suggestion_count() -> int:
+    """Total pending suggestions across all people (for a review badge)."""
+    with db.connection() as conn, conn.cursor() as cur:
+        return db.count_suggestions(cur)
+
+
+def all_suggestions(limit: int = 100) -> list[dict[str, Any]]:
+    """Pending 'Is this <person>?' face suggestions across everyone (Review center)."""
+    with timer("query.all_suggestions"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_all_suggestions_detail(cur, limit)
+
+
+def confirm_suggestion(face_id: int, person_id: int) -> None:
+    """Accept a suggestion: assign the face, teach the profile, remember 'yes'."""
+    from clustering.incremental import confirm_face
+
+    with db.connection() as conn, conn.cursor() as cur:
+        confirm_face(cur, face_id, person_id)
+
+
+def reject_suggestion(face_id: int, person_id: int) -> None:
+    """Decline a suggestion: remember 'no' (face stays ungrouped, never re-offered)."""
+    with db.connection() as conn, conn.cursor() as cur:
+        db.record_feedback(cur, face_id, person_id, "reject")
+        db.delete_suggestion(cur, face_id)
+
+
+def person_representatives(person_id: int) -> list[dict[str, Any]]:
+    """The person's learned representative faces (crop + quality + date)."""
+    with timer("query.person_reps"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_person_representatives_detail(cur, person_id)
+
+
+def reject_representative(person_id: int, face_id: int) -> int:
+    """Drop one learned appearance: detach the face + remember the rejection.
+
+    Re-curates the person (or deletes it if empty). Returns the faces remaining.
+    """
+    from clustering.incremental import rebuild_person_gallery
+
+    with db.connection() as conn, conn.cursor() as cur:
+        db.detach_faces(cur, [face_id])
+        db.record_feedback(cur, face_id, person_id, "reject")
+        remaining = db.recompute_person_profile(cur, person_id)
+        if remaining == 0:
+            db.delete_person(cur, person_id)
+        else:
+            rebuild_person_gallery(cur, person_id)
+    return remaining
+
+
+def remove_faces_from_person(person_id: int, photo_ids: list[int]) -> int:
+    """Correct a mistake: detach this person's faces in the given photos.
+
+    Records a durable **rejection** for each detached face so recognition never
+    re-assigns it to this person, then re-curates the person's profile/gallery
+    (deleting the person if it has no faces left). Returns how many faces moved.
+    """
+    from clustering.incremental import rebuild_person_gallery
+
+    with db.connection() as conn, conn.cursor() as cur:
+        face_ids = db.unassign_person_faces_in_photos(cur, person_id, photo_ids)
+        for face_id in face_ids:
+            db.record_feedback(cur, face_id, person_id, "reject")
+        remaining = db.recompute_person_profile(cur, person_id)
+        if remaining == 0:
+            db.delete_person(cur, person_id)  # empty group; its rejections cascade away
+        else:
+            rebuild_person_gallery(cur, person_id)
+    return len(face_ids)
+
+
+def set_favorite(photo_id: int, favorite: bool) -> None:
+    """Mark or unmark a photo as a favorite."""
+    with db.connection() as conn, conn.cursor() as cur:
+        db.set_favorite(cur, photo_id, favorite)

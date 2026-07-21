@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Generated artifacts — never commit user data or caches
+/logs/*
+!/logs/.gitkeep
+/cache/
+/data/thumbnails/*
+!/data/thumbnails/.gitkeep
+/data/face_crops/*
+!/data/face_crops/.gitkeep
+
+# Local environment overrides
+.env

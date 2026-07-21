@@ -1,0 +1,514 @@
+<title>PhotoSphere AI 2.0 — UX Prototype</title>
+<style>
+  /* ---- PDD tokens (docs/PDD.md §4) — dark default identity ---- */
+  :root{
+    --l0:#1a1c20; --l1:#22252b; --l2:#262a31; --l3:#2c313a;
+    --border:#33373f; --text:#e8eaee; --muted:#9aa1ac; --faint:#6b7280;
+    --accent:#4a8df0; --accent-soft:rgba(74,141,240,.16);
+    --good:#4dbb7a; --warn:#d9a13b;
+    --r1:8px; --r2:12px; --r3:16px;
+    --sh1:0 1px 3px rgba(0,0,0,.35); --sh2:0 6px 24px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box; margin:0}
+  html,body{height:100%}
+  body{
+    font-family:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+    background:var(--l0); color:var(--text); font-size:14px; overflow:hidden;
+  }
+  button{font:inherit; color:inherit; background:none; border:none; cursor:pointer}
+  button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:var(--r1)}
+  @media (prefers-reduced-motion: reduce){ *{transition:none !important; animation:none !important} }
+
+  /* ---- shell: sidebar | content | inspector ---- */
+  .shell{display:grid; grid-template-columns:216px 1fr 280px; grid-template-rows:56px 1fr; height:100vh}
+  @media (max-width:1280px){ .shell{grid-template-columns:216px 1fr 0} .inspector{display:none} }
+
+  /* top bar */
+  .top{grid-column:1/4; display:flex; align-items:center; gap:12px; padding:0 16px;
+       background:var(--l1); border-bottom:1px solid var(--border)}
+  .mark{display:flex; align-items:center; gap:8px; width:200px; font-weight:600; font-size:16px}
+  .lens{width:22px;height:22px;border-radius:50%;border:3px solid var(--accent);
+        box-shadow:inset 0 0 0 3px var(--l1), inset 0 0 0 5px rgba(74,141,240,.45)}
+  .search{flex:1; max-width:560px; display:flex; align-items:center; gap:8px;
+          background:var(--l0); border:1px solid var(--border); border-radius:var(--r1);
+          padding:8px 12px; color:var(--muted); cursor:text}
+  .search kbd{margin-left:auto; font:11px/1 inherit; color:var(--faint);
+              border:1px solid var(--border); border-radius:4px; padding:2px 5px}
+  .top .actions{margin-left:auto; display:flex; gap:8px; align-items:center}
+  .btn{padding:8px 14px; border-radius:var(--r1); border:1px solid var(--border);
+       background:var(--l2); transition:background .12s, transform .12s}
+  .btn:hover{background:var(--l3)}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600}
+  .bell{position:relative; width:40px;height:40px; border-radius:var(--r1)}
+  .bell:hover{background:var(--l3)}
+  .dot{position:absolute; top:7px; right:7px; width:8px;height:8px;border-radius:50%;background:var(--accent)}
+
+  /* sidebar */
+  .side{background:var(--l1); border-right:1px solid var(--border); padding:16px 8px; overflow-y:auto}
+  .side h6{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--faint);
+           padding:12px 12px 6px; font-weight:600}
+  .nav{display:flex; flex-direction:column; gap:2px}
+  .nav button{display:flex; align-items:center; gap:10px; width:100%; text-align:left;
+              padding:9px 12px; border-radius:var(--r1); color:var(--muted); min-height:40px;
+              transition:background .12s}
+  .nav button:hover{background:var(--l2); color:var(--text)}
+  .nav button.on{background:var(--accent-soft); color:var(--text); font-weight:600}
+  .nav .ico{width:16px; text-align:center; opacity:.85}
+  .badge{margin-left:auto; background:var(--accent); color:#fff; font-size:11px; font-weight:600;
+         border-radius:99px; padding:1px 7px}
+
+  /* content */
+  .content{overflow-y:auto; padding:24px 32px; scroll-behavior:smooth}
+  .view{display:none} .view.on{display:block; animation:fade .15s ease}
+  @keyframes fade{from{opacity:0; transform:translateY(4px)} to{opacity:1}}
+  h1{font-size:28px; font-weight:600; text-wrap:balance}
+  h2{font-size:20px; font-weight:600; margin:24px 0 12px}
+  .sub{color:var(--muted); margin-top:4px}
+  .hero{font-size:36px; font-weight:600}
+
+  /* inspector */
+  .inspector{background:var(--l2); border-left:1px solid var(--border); padding:16px; overflow-y:auto}
+  .inspector h5{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--faint);
+                margin:16px 0 8px; font-weight:600}
+  .inspector h5:first-child{margin-top:0}
+  .kv{display:grid; grid-template-columns:auto 1fr; gap:4px 12px; font-size:12px; color:var(--muted);
+      font-variant-numeric:tabular-nums}
+  .kv b{color:var(--text); font-weight:500}
+
+  /* cards + grids */
+  .cards{display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:16px}
+  .card{background:var(--l1); border:1px solid var(--border); border-radius:var(--r2);
+        padding:16px; box-shadow:var(--sh1); transition:transform .12s, box-shadow .12s}
+  .card:hover{transform:translateY(-2px); box-shadow:var(--sh2)}
+  .chip{display:inline-flex; align-items:center; gap:6px; background:var(--l2); border:1px solid var(--border);
+        border-radius:99px; padding:4px 12px; font-size:12px; color:var(--muted); cursor:pointer;
+        transition:background .12s}
+  .chip:hover{background:var(--l3); color:var(--text)}
+  .chip.on{background:var(--accent-soft); color:var(--text); border-color:var(--accent)}
+  .status{display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--muted)}
+  .status i{width:8px;height:8px;border-radius:50%;display:inline-block}
+  .ok{background:var(--good)} .busy{background:var(--warn)}
+
+  /* photo tiles: gradient placeholders, justified-ish rows */
+  .grid{display:flex; flex-wrap:wrap; gap:8px}
+  .ph{height:148px; border-radius:var(--r1); position:relative; overflow:hidden; cursor:pointer;
+      background:linear-gradient(135deg, hsl(var(--h,215) 30% 32%), hsl(calc(var(--h,215) + 40) 35% 20%));
+      flex-grow:var(--g,1); flex-basis:calc(var(--g,1) * 110px); transition:transform .12s, box-shadow .12s}
+  .ph:hover{transform:translateY(-2px); box-shadow:var(--sh2)}
+  .ph .meta{position:absolute; inset:auto 0 0 0; padding:20px 10px 8px; font-size:12px; color:#fff;
+            background:linear-gradient(transparent, rgba(0,0,0,.55)); opacity:0; transition:opacity .12s}
+  .ph:hover .meta{opacity:1}
+  .strip{display:flex; gap:8px; overflow-x:auto; padding-bottom:4px}
+  .strip .ph{height:96px; flex:0 0 128px}
+
+  /* people */
+  .pcard{display:flex; flex-direction:column; align-items:center; gap:8px; padding:20px 12px;
+         text-align:center; cursor:pointer}
+  .avatar{width:72px;height:72px;border-radius:50%;
+          background:radial-gradient(circle at 35% 30%, hsl(var(--h,215) 35% 45%), hsl(var(--h,215) 30% 24%))}
+  .avatar.sm{width:40px;height:40px}
+  .avatar.lg{width:96px;height:96px}
+
+  /* suggestion / review card */
+  .sug{display:flex; align-items:center; gap:12px; padding:12px 16px}
+  .sug .faces{display:flex; gap:6px}
+  .sug .why{flex:1; min-width:0} .sug .why p{color:var(--muted); font-size:12px; margin-top:2px}
+  .sug .acts{display:flex; gap:8px}
+  .queue{display:flex; flex-direction:column; gap:12px; max-width:720px}
+
+  /* empty state */
+  .empty{display:flex; flex-direction:column; align-items:center; gap:12px; padding:64px 24px;
+         color:var(--muted); text-align:center}
+  .empty .glyph{font-size:36px; opacity:.5}
+
+  /* viewer workspace */
+  .viewer{display:grid; grid-template-rows:1fr 116px; height:calc(100vh - 56px)}
+  .stage{display:flex; align-items:center; justify-content:center; background:#111318; position:relative}
+  .stage .photo{width:min(72%, 900px); aspect-ratio:3/2; border-radius:var(--r1);
+                background:linear-gradient(135deg, hsl(210 35% 38%), hsl(260 30% 22%))}
+  .stage .back{position:absolute; top:16px; left:16px}
+  .stage .hint{position:absolute; bottom:12px; left:50%; transform:translateX(-50%);
+               color:var(--faint); font-size:12px}
+  .film{display:flex; gap:8px; align-items:center; padding:10px 16px; background:var(--l1);
+        border-top:1px solid var(--border); overflow-x:auto}
+  .film .ph{height:88px; flex:0 0 118px}
+  .film .ph.sel{outline:2px solid var(--accent)}
+
+  /* timeline */
+  .tl h3{position:sticky; top:-24px; background:var(--l0); padding:12px 0 8px; font-size:16px;
+         font-weight:600; z-index:2; border-bottom:1px solid var(--border); margin-bottom:12px}
+
+  /* overlays */
+  .overlay{position:fixed; inset:0; background:rgba(10,11,13,.6); display:none;
+           align-items:flex-start; justify-content:center; z-index:50}
+  .overlay.on{display:flex; animation:fade .15s ease}
+  .palette{margin-top:12vh; width:min(560px, 90vw); background:var(--l2); border:1px solid var(--border);
+           border-radius:var(--r3); box-shadow:var(--sh2); overflow:hidden}
+  .palette input{width:100%; padding:16px 20px; font:inherit; font-size:16px; color:var(--text);
+                 background:none; border:none; border-bottom:1px solid var(--border); outline:none}
+  .palette ul{list-style:none; padding:8px; max-height:320px; overflow-y:auto}
+  .palette li{padding:10px 12px; border-radius:var(--r1); display:flex; gap:10px; cursor:pointer; color:var(--muted)}
+  .palette li:hover,.palette li.sel{background:var(--accent-soft); color:var(--text)}
+  .palette li kbd{margin-left:auto; color:var(--faint); font-size:11px}
+  .notif{position:fixed; top:64px; right:16px; width:320px; background:var(--l2); border:1px solid var(--border);
+         border-radius:var(--r2); box-shadow:var(--sh2); display:none; z-index:40; overflow:hidden}
+  .notif.on{display:block; animation:fade .15s ease}
+  .notif header{padding:12px 16px; font-weight:600; border-bottom:1px solid var(--border)}
+  .notif div{padding:10px 16px; font-size:13px; color:var(--muted); border-bottom:1px solid var(--border)}
+  .notif div b{color:var(--text); font-weight:500; display:block}
+  .toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+         background:var(--l3); border:1px solid var(--border); border-radius:var(--r2);
+         padding:12px 20px; box-shadow:var(--sh2); transition:transform .18s; z-index:60}
+  .toast.on{transform:translateX(-50%) translateY(0)}
+  .note{color:var(--faint); font-size:12px; margin-top:32px; border-top:1px solid var(--border); padding-top:12px}
+</style>
+
+<div class="shell">
+  <div class="top">
+    <div class="mark"><span class="lens"></span> PhotoSphere</div>
+    <div class="search" role="button" tabindex="0" onclick="openPalette()">🔍 Search your memories… <kbd>Ctrl K</kbd></div>
+    <div class="actions">
+      <button class="btn primary" onclick="toast('Importing 1,204 photos…')">Import</button>
+      <button class="bell" aria-label="Notifications" onclick="toggleNotif()">🔔<span class="dot"></span></button>
+    </div>
+  </div>
+
+  <nav class="side">
+    <h6>Library</h6>
+    <div class="nav">
+      <button data-go="dash" class="on"><span class="ico">◧</span> Dashboard</button>
+      <button data-go="photos"><span class="ico">▦</span> Photos</button>
+      <button data-go="timeline"><span class="ico">≣</span> Timeline</button>
+      <button data-go="people"><span class="ico">☺</span> People</button>
+      <button data-go="albums"><span class="ico">▤</span> Albums</button>
+      <button data-go="favs"><span class="ico">♥</span> Favorites</button>
+    </div>
+    <h6>AI</h6>
+    <div class="nav">
+      <button data-go="review"><span class="ico">✓</span> Review <span class="badge">7</span></button>
+      <button data-go="insights"><span class="ico">◉</span> Insights</button>
+    </div>
+    <h6>System</h6>
+    <div class="nav">
+      <button data-go="settings"><span class="ico">⚙</span> Settings</button>
+      <button data-go="about"><span class="ico">ℹ</span> About</button>
+    </div>
+  </nav>
+
+  <main class="content" id="content">
+
+    <section class="view on" data-view="dash">
+      <div class="hero" id="greet">Good evening</div>
+      <p class="sub">102,451 photos · 438 people · 12 albums</p>
+      <div class="cards" style="margin-top:24px">
+        <div class="card" style="cursor:pointer" onclick="go('review')">
+          <h2 style="margin:0 0 8px">AI needs your help <span class="badge">7</span></h2>
+          <p class="sub">2 possible merges · 5 low-confidence matches</p>
+          <p class="sub" style="margin-top:12px; color:var(--accent)">Open Review →</p>
+        </div>
+        <div class="card">
+          <h2 style="margin:0 0 8px">Library health</h2>
+          <p class="status"><i class="ok"></i> AI · Accelerated on your GPU</p>
+          <p class="status"><i class="ok"></i> Knowledge base · Healthy</p>
+          <p class="status"><i class="busy"></i> <span id="indexing">Updating library · 98%</span></p>
+        </div>
+        <div class="card">
+          <h2 style="margin:0 0 8px">Quick actions</h2>
+          <div style="display:flex; gap:8px; flex-wrap:wrap">
+            <button class="chip" onclick="toast('Importing 1,204 photos…')">Import</button>
+            <button class="chip" onclick="openPalette()">Search</button>
+            <button class="chip" onclick="go('albums')">New album</button>
+            <button class="chip" onclick="toast('Backup written to photosphere-backup.json')">Back up</button>
+          </div>
+        </div>
+      </div>
+      <h2>Recently added</h2><div class="strip" data-tiles="8"></div>
+      <h2>On this day — July 20</h2><div class="strip" data-tiles="6" data-hue="30"></div>
+    </section>
+
+    <section class="view" data-view="photos">
+      <h1>Photos</h1><p class="sub">Newest first · hover for details · click to open</p>
+      <div class="grid" style="margin-top:16px" data-tiles="28" data-open="viewer"></div>
+    </section>
+
+    <section class="view" data-view="viewer">
+      <div class="viewer">
+        <div class="stage">
+          <button class="btn back" onclick="go('photos')">← Photos</button>
+          <div class="photo"></div>
+          <p class="hint">Space — hide UI · F — fullscreen · ← → — navigate</p>
+        </div>
+        <div class="film" data-tiles="10" data-sel="3"></div>
+      </div>
+    </section>
+
+    <section class="view" data-view="people">
+      <h1>People</h1>
+      <div class="card sug" style="margin-top:16px">
+        <div class="faces"><span class="avatar sm" style="--h:215"></span><span class="avatar sm" style="--h:200"></span></div>
+        <div class="why"><b>Same person?</b><p>Unknown (5) looks like Ram (447) · match 0.63</p></div>
+        <div class="acts">
+          <button class="btn primary" onclick="this.closest('.sug').remove(); toast('Merged into Ram · profiles combined')">Merge</button>
+          <button class="btn" onclick="this.closest('.sug').remove(); toast('Kept separate — won’t ask again')">Not the same</button>
+        </div>
+      </div>
+      <div class="cards" style="margin-top:16px; grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">
+        <div class="card pcard" onclick="go('person')"><span class="avatar" style="--h:215"></span><b>Ram</b><span class="sub">447 photos</span></div>
+        <div class="card pcard"><span class="avatar" style="--h:120"></span><b>Hari</b><span class="sub">201 photos</span></div>
+        <div class="card pcard"><span class="avatar" style="--h:280"></span><b>Sita</b><span class="sub">188 photos</span></div>
+        <div class="card pcard"><span class="avatar" style="--h:20"></span><b>Mother</b><span class="sub">96 photos</span></div>
+        <div class="card pcard"><span class="avatar" style="--h:330"></span><b>Unknown</b><span class="sub">12 photos</span></div>
+      </div>
+    </section>
+
+    <section class="view" data-view="person">
+      <button class="btn" onclick="go('people')">← People</button>
+      <div style="display:flex; gap:24px; align-items:center; margin-top:16px">
+        <span class="avatar lg" style="--h:215"></span>
+        <div>
+          <h1>Ram <button title="Rename" style="font-size:16px; color:var(--muted)">✎</button></h1>
+          <p class="sub">447 photos · First seen 2019 · Last seen yesterday</p>
+          <div style="display:flex; gap:8px; margin-top:8px">
+            <span class="chip">Appears with: Hari</span><span class="chip">Sita</span><span class="chip">Mother</span>
+          </div>
+        </div>
+        <div style="margin-left:auto; display:flex; gap:8px">
+          <button class="btn">Merge…</button><button class="btn">Export</button>
+        </div>
+      </div>
+      <h2>Known appearances</h2>
+      <div class="strip" data-tiles="6" data-hue="215" style="--tileh:96px"></div>
+      <h2>Photos</h2>
+      <div class="grid" data-tiles="14" data-hue="215" data-open="viewer"></div>
+    </section>
+
+    <section class="view" data-view="timeline">
+      <h1>Timeline</h1>
+      <div class="tl" style="margin-top:8px">
+        <h3>July 2026</h3><div class="grid" data-tiles="10" data-open="viewer"></div>
+        <h3>June 2026</h3><div class="grid" data-tiles="8" data-hue="150" data-open="viewer"></div>
+        <h3>December 2025</h3><div class="grid" data-tiles="6" data-hue="260" data-open="viewer"></div>
+      </div>
+    </section>
+
+    <section class="view" data-view="albums">
+      <h1>Albums</h1>
+      <div class="empty">
+        <span class="glyph">▤</span>
+        <b>No albums yet</b>
+        <p>Group photos into collections — or let a saved search build one for you.</p>
+        <button class="btn primary" onclick="toast('Album “Beach 2021” created')">New Album</button>
+      </div>
+    </section>
+
+    <section class="view" data-view="favs">
+      <h1>Favorites</h1>
+      <div class="grid" style="margin-top:16px" data-tiles="9" data-hue="0" data-open="viewer"></div>
+    </section>
+
+    <section class="view" data-view="review">
+      <h1>Review</h1>
+      <div style="display:flex; gap:8px; margin:16px 0">
+        <button class="chip on">All (7)</button><button class="chip">Same person? (2)</button>
+        <button class="chip">Is this…? (5)</button><button class="chip">Unknown faces</button>
+      </div>
+      <div class="queue">
+        <div class="card sug">
+          <div class="faces"><span class="avatar sm" style="--h:215"></span><span class="avatar sm" style="--h:200"></span></div>
+          <div class="why"><b>Same person?</b><p>Unknown (5) · Ram (447)</p></div>
+          <div class="acts"><button class="btn primary" onclick="resolve(this,'Merged')">Merge</button>
+            <button class="btn" onclick="resolve(this,'Kept separate')">Not the same</button></div>
+        </div>
+        <div class="card sug">
+          <div class="faces"><span class="avatar sm" style="--h:220"></span></div>
+          <div class="why"><b>Is this Ram?</b><p>From IMG_2041.jpg · beach, July 2024</p></div>
+          <div class="acts"><button class="btn primary" onclick="resolve(this,'Added to Ram')">Yes</button>
+            <button class="btn" onclick="resolve(this,'Not Ram — remembered')">No</button></div>
+        </div>
+        <div class="card sug">
+          <div class="faces"><span class="avatar sm" style="--h:120"></span></div>
+          <div class="why"><b>Is this Hari?</b><p>From DJI_0553.jpg · drone team meetup</p></div>
+          <div class="acts"><button class="btn primary" onclick="resolve(this,'Added to Hari')">Yes</button>
+            <button class="btn" onclick="resolve(this,'Not Hari — remembered')">No</button></div>
+        </div>
+      </div>
+      <p class="sub" style="margin-top:16px">Keyboard: Y yes · N no · ↓ next — answers teach recognition.</p>
+    </section>
+
+    <section class="view" data-view="insights">
+      <h1>Your library, understood</h1>
+      <p class="sub">PhotoSphere builds knowledge about your photos — all of it on this computer.</p>
+      <div class="cards" style="margin-top:24px; grid-template-columns:repeat(auto-fill,minmax(200px,1fr))">
+        <div class="card"><div class="hero" style="font-size:28px">438</div><p class="sub">☺ People recognized</p></div>
+        <div class="card"><div class="hero" style="font-size:28px">72</div><p class="sub">⌖ Places seen</p></div>
+        <div class="card"><div class="hero" style="font-size:28px">102,451</div><p class="sub">▦ Photos indexed</p></div>
+        <div class="card"><div class="hero" style="font-size:28px">3,204</div><p class="sub">¶ Photos with text</p></div>
+        <div class="card"><div class="hero" style="font-size:28px">512</div><p class="sub">♥ Favorites</p></div>
+        <div class="card" style="cursor:pointer" onclick="go('review')"><div class="hero" style="font-size:28px">7</div><p class="sub">✓ Awaiting your review</p></div>
+        <div class="card"><div class="hero" style="font-size:28px">16</div><p class="sub">？ Unknown faces</p></div>
+        <div class="card"><div class="hero" style="font-size:28px">212</div><p class="sub">✎ Corrections remembered</p></div>
+      </div>
+      <h2>Learning from you</h2>
+      <p class="sub">31 people named · 212 corrections remembered · recognition improves with every answer.</p>
+      <p class="note">Diagnostics (models, GPU details, thresholds) →</p>
+    </section>
+
+    <section class="view" data-view="about">
+      <h1><span class="lens" style="display:inline-block; vertical-align:-3px"></span> PhotoSphere AI</h1>
+      <p class="sub">Your photos, understood — privately.</p>
+      <div class="cards" style="margin-top:24px; max-width:720px; grid-template-columns:1fr">
+        <div class="card"><b>Everything stays on your computer.</b><p class="sub">No cloud. No accounts. No telemetry. Ever.</p></div>
+        <div class="card"><b>It learns from you.</b><p class="sub">Every name and correction makes recognition and search better — and is remembered.</p></div>
+        <div class="card"><b>Fast, because it's yours.</b><p class="sub">Accelerated by your own GPU. Search 100,000 photos in a blink, fully offline.</p></div>
+        <div class="card"><b>Your originals are sacred.</b><p class="sub">Photos are never moved, renamed, edited or deleted.</p></div>
+      </div>
+      <p style="margin-top:16px"><button class="btn" onclick="showWelcome()">Replay welcome</button></p>
+    </section>
+
+    <section class="view" data-view="settings">
+      <h1>Settings</h1>
+      <div class="cards" style="margin-top:16px; max-width:720px; grid-template-columns:1fr">
+        <div class="card"><h2 style="margin:0 0 4px">Library</h2><p class="sub">Watched folders · thumbnails cache · database</p></div>
+        <div class="card"><h2 style="margin:0 0 4px">AI &amp; performance</h2><p class="sub">Recognition sensitivity · decode workers · GPU</p></div>
+        <div class="card"><h2 style="margin:0 0 4px">Appearance</h2><p class="sub">Theme · motion · tile size</p></div>
+        <div class="card"><h2 style="margin:0 0 4px">Shortcuts</h2><p class="sub">Every action, keyboard-first</p></div>
+      </div>
+      <p class="note">Phase 0 prototype — clickable mockup, no real data. Dark theme is the 2.0
+      default identity; light tokens ship with Phase 1. Layout, tokens and flows per docs/PDD.md.</p>
+    </section>
+  </main>
+
+  <aside class="inspector" id="inspector"></aside>
+</div>
+
+<div class="overlay" id="paletteWrap" onclick="if(event.target===this) closePalette()">
+  <div class="palette">
+    <input id="palIn" placeholder="Type a command or search… (try: ram beach 2021)" oninput="filterPal()">
+    <ul id="palList"></ul>
+  </div>
+</div>
+<div class="notif" id="notif">
+  <header>Notifications</header>
+  <div><b>Import finished</b>1,204 photos added · 2 min ago</div>
+  <div><b>3 duplicate people found</b>Review when ready · 5 min ago</div>
+  <div><b>Search got smarter</b>Text found in 214 more photos · 1 h ago</div>
+  <div><b>AI accelerated</b>Now using your RTX 5060 · today</div>
+</div>
+<div class="toast" id="toast"></div>
+
+<div class="overlay on" id="welcome">
+  <div class="palette" style="margin-top:18vh; text-align:center; padding:40px 32px">
+    <span class="lens" style="display:inline-block; width:40px; height:40px; margin-bottom:16px"></span>
+    <h1 id="wTitle" style="font-size:28px">Welcome to PhotoSphere</h1>
+    <p class="sub" id="wBody" style="margin:12px auto 24px; max-width:38ch">Your photos, understood — privately.
+      Everything happens on this computer. Nothing is ever uploaded.</p>
+    <div style="display:flex; gap:8px; justify-content:center">
+      <button class="btn primary" id="wNext" onclick="welcomeNext()">Choose a folder</button>
+      <button class="btn" onclick="closeWelcome()">Skip</button>
+    </div>
+    <p class="sub" id="wStep" style="margin-top:20px; font-size:12px"></p>
+  </div>
+</div>
+
+<script>
+  const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
+
+  /* deterministic tile generator: gradient placeholders, varied widths */
+  $$("[data-tiles]").forEach(box=>{
+    const n=+box.dataset.tiles, base=+(box.dataset.hue||205), sel=+(box.dataset.sel||-1);
+    for(let i=0;i<n;i++){
+      const t=document.createElement("div");
+      t.className="ph"+(i===sel?" sel":"");
+      t.style.setProperty("--h", (base + (i*47)%120 - 20));
+      t.style.setProperty("--g", 1 + (i*7)%3);
+      t.innerHTML='<div class="meta">IMG_'+(2000+i*13)+'.jpg · Jul '+(1+i%28)+'</div>';
+      if(box.dataset.open) t.onclick=()=>go(box.dataset.open);
+      box.appendChild(t);
+    }
+  });
+
+  /* navigation + context inspector */
+  const INSPECTOR={
+    dash:'<h5>Today</h5><div class="kv"><span>Imported</span><b>1,204</b><span>Faces found</span><b>3,388</b><span>Questions</span><b>7</b></div><h5>Recent searches</h5><p class="sub">ram beach · passport · sunset 2024</p>',
+    photos:'<h5>Selection</h5><p class="sub">Nothing selected</p><h5>Filters</h5><p class="sub">All photos · newest first</p>',
+    viewer:'<h5>People</h5><p><span class="chip" onclick="go(\'person\')">☺ Ram</span> <span class="chip">☺ ?</span></p><h5>Info</h5><div class="kv"><span>Taken</span><b>Jul 4, 2021</b><span>Camera</span><b>RX100 VII</b><span>Exposure</span><b>f/1.8 · 1/250</b><span>Size</span><b>24.2 MP</b><span>Place</span><b>37.775, -122.42</b></div><h5>Text found</h5><p class="sub">“BOARDING PASS — SFO”</p><h5>Similar</h5><p class="sub">14 photos →</p>',
+    person:'<h5>Profile</h5><div class="kv"><span>Photos</span><b>447</b><span>First seen</span><b>2019</b><span>Last seen</span><b>Yesterday</b><span>Appearances</span><b>6 learned</b></div><h5>Appears with</h5><p class="sub">Hari (88) · Sita (61) · Mother (35)</p>',
+    review:'<h5>Evidence</h5><div class="kv"><span>Match</span><b>0.63</b><span>Same day</span><b>Yes</b><span>Same place</span><b>Yes</b></div><p class="sub" style="margin-top:8px">Only Review shows confidence numbers — browsing stays clean.</p>',
+    timeline:'<h5>Jump to</h5><p class="sub">2026 · 2025 · 2024 · 2021 · 2019</p>',
+    albums:'<h5>Albums</h5><p class="sub">Smart albums are saved searches — they stay current automatically.</p>',
+    favs:'<h5>Favorites</h5><p class="sub">♥ feeds search ranking.</p>',
+    insights:'<h5>Knowledge base</h5><div class="kv"><span>Status</span><b>Healthy</b><span>Size</span><b>2.1 GB</b><span>Last learned</span><b>2 min ago</b></div>',
+    about:'<h5>Version</h5><div class="kv"><span>PhotoSphere</span><b>2.0</b><span>Mode</span><b>Fully offline</b></div>',
+    settings:'<h5>Diagnostics</h5><p class="sub">Technical detail lives here — nowhere else.</p>'
+  };
+  function go(v){
+    $$(".view").forEach(x=>x.classList.toggle("on", x.dataset.view===v));
+    $$(".nav button").forEach(b=>b.classList.toggle("on", b.dataset.go===v));
+    $("#inspector").innerHTML=INSPECTOR[v]||"";
+    $("#content").scrollTop=0;
+  }
+  $$(".nav button").forEach(b=>b.onclick=()=>go(b.dataset.go));
+  go("dash");
+
+  /* review queue */
+  function resolve(btn,msg){ btn.closest(".sug").remove(); toast(msg);
+    const left=$$('.queue .sug').length, badge=$$('.badge');
+    badge.forEach(b=>b.textContent=left+4);
+    if(!left) $(".queue").innerHTML='<div class="empty"><span class="glyph">✓</span><b>All caught up</b><p>New questions will appear here as photos arrive.</p></div>';
+  }
+
+  /* command palette */
+  const CMDS=[["🔍","Search: ram beach 2021","Enter","photos"],["☺","Open person: Ram","","person"],
+    ["⬇","Import folder…","Ctrl O","dash"],["✓","Open Review","","review"],["▤","Create album","","albums"],
+    ["⚙","GPU status","","settings"],["⟳","Re-index library","",""],["💾","Export backup","",""]];
+  function renderPal(f=""){ $("#palList").innerHTML=CMDS
+    .filter(c=>c[1].toLowerCase().includes(f.toLowerCase()))
+    .map((c,i)=>'<li class="'+(i?'':'sel')+'" onclick="palGo(\''+c[3]+'\')"><span>'+c[0]+'</span>'+c[1]+(c[2]?'<kbd>'+c[2]+'</kbd>':'')+'</li>').join(""); }
+  function filterPal(){ renderPal($("#palIn").value); }
+  function openPalette(){ renderPal(); $("#paletteWrap").classList.add("on"); $("#palIn").value=""; $("#palIn").focus(); }
+  function closePalette(){ $("#paletteWrap").classList.remove("on"); }
+  function palGo(v){ closePalette(); if(v) go(v); else toast("Started"); }
+
+  /* notifications + toast */
+  function toggleNotif(){ $("#notif").classList.toggle("on"); }
+  let toastT; function toast(m){ const t=$("#toast"); t.textContent=m; t.classList.add("on");
+    clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("on"), 2600); }
+
+  /* liveness: greeting follows the clock; indexing ticks to done */
+  const h=new Date().getHours();
+  $("#greet").textContent = h<12 ? "Good morning" : h<18 ? "Good afternoon" : "Good evening";
+  let pct=98; const tick=setInterval(()=>{
+    pct++; const el=$("#indexing"); if(!el) return;
+    if(pct>=100){ el.textContent="Library up to date"; el.parentElement.querySelector("i").className="ok"; clearInterval(tick); }
+    else el.textContent="Updating library · "+pct+"%";
+  }, 2500);
+
+  /* guided welcome (first launch; replayable from About) */
+  const WSTEPS=[
+    ["Building your library","Scanning 1,204 photos — thumbnails appear as they're made.","Continue"],
+    ["Finding people","Faces are being noticed and grouped. You'll name them once — PhotoSphere remembers.","Continue"],
+    ["Making it searchable","Soon you can type “beach sunset” or “passport” and just… find it.","Continue"],
+    ["Ready","Your library is alive. Start with the Dashboard — or press Ctrl+K and search.","Get started"],
+  ];
+  let wi=-1;
+  function welcomeNext(){
+    wi++;
+    if(wi>=WSTEPS.length){ closeWelcome(); return; }
+    const [t,b,btn]=WSTEPS[wi];
+    $("#wTitle").textContent=t; $("#wBody").textContent=b; $("#wNext").textContent=btn;
+    $("#wStep").textContent="Step "+(wi+1)+" of "+WSTEPS.length;
+  }
+  function showWelcome(){ wi=-1; $("#wTitle").textContent="Welcome to PhotoSphere";
+    $("#wBody").textContent="Your photos, understood — privately. Everything happens on this computer. Nothing is ever uploaded.";
+    $("#wNext").textContent="Choose a folder"; $("#wStep").textContent="";
+    $("#welcome").classList.add("on"); }
+  function closeWelcome(){ $("#welcome").classList.remove("on"); toast("Welcome anytime — About → Replay welcome"); }
+
+  /* keyboard */
+  addEventListener("keydown", e=>{
+    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="k"){ e.preventDefault(); openPalette(); }
+    else if(e.key==="Escape"){ closePalette(); $("#notif").classList.remove("on");
+      $("#welcome").classList.remove("on");
+      if($('[data-view="viewer"]').classList.contains("on")) go("photos"); }
+  });
+</script>

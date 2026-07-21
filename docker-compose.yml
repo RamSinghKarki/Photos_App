@@ -1,0 +1,35 @@
+# PhotoSphere AI — local PostgreSQL 18 + pgvector database.
+#
+# This runs ONLY the database in Docker. The desktop app (PySide6/Qt) and the
+# pipeline scripts run on the host and connect to this container on
+# localhost:5432. Everything stays on your machine — nothing is exposed
+# beyond localhost.
+#
+#   docker compose up -d      # start the database
+#   docker compose down       # stop it (data is kept in the named volume)
+#   docker compose down -v    # stop AND delete all data
+
+services:
+  db:
+    image: pgvector/pgvector:pg18
+    container_name: photosphere-db
+    environment:
+      # These match the app's defaults, so no PHOTOSPHERE_DB_* env is needed.
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: photosphere
+    ports:
+      - "127.0.0.1:5432:5432"   # bind to localhost only
+    volumes:
+      - photosphere-pgdata:/var/lib/postgresql/data
+      # Enables the vector extension on first database creation.
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d photosphere"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  photosphere-pgdata:
