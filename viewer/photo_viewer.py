@@ -82,6 +82,14 @@ class PhotoViewer(QtWidgets.QDialog):
         self._index = max(0, min(start_index, len(photo_ids) - 1)) if photo_ids else 0
         self._source_pixmap: Optional[QtGui.QPixmap] = None
 
+        # Gentle fade-in as the viewer opens (the "zoom from thumbnail" moment,
+        # kept within the PDD 220 ms motion cap; skipped under reduced motion).
+        self._fade = QtCore.QPropertyAnimation(self, b"windowOpacity", self)
+        self._fade.setDuration(theme.MOTION_MS["photo_open"])
+        self._fade.setStartValue(0.0)
+        self._fade.setEndValue(1.0)
+        self._faded_in = False
+
         root = QtWidgets.QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
@@ -125,6 +133,13 @@ class PhotoViewer(QtWidgets.QDialog):
 
         if self._ids:
             self._load_current()
+
+    def showEvent(self, event: QtGui.QShowEvent) -> None:  # noqa: N802
+        super().showEvent(event)
+        if not self._faded_in:
+            self._faded_in = True
+            self.setWindowOpacity(0.0)
+            self._fade.start()
 
     # -- navigation ----------------------------------------------------------
     def show_next(self) -> None:

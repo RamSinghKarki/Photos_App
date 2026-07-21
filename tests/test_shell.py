@@ -96,6 +96,30 @@ def test_dashboard_activity_center(qapp, clean_db) -> None:
     assert nav == ["people"]
 
 
+def test_gallery_tile_delegate_and_roles(qapp, clean_db, photo_tree) -> None:
+    from scanner.scanner import scan_directory
+    from thumbnails.generator import generate_thumbnails
+    from viewer.gallery import DATE_ROLE, NAME_ROLE, PhotoGrid, PhotoGridModel, PhotoTileDelegate
+    from viewer import data
+
+    scan_directory(photo_tree)
+    generate_thumbnails()
+
+    model = PhotoGridModel()
+    model.set_fetcher(lambda offset, limit: data.photo_grid(limit=limit, offset=offset))
+    grid = PhotoGrid(model)
+    assert isinstance(grid.itemDelegate(), PhotoTileDelegate)
+    assert model.rowCount() == 5
+
+    idx = model.index(0)
+    assert model.data(idx, NAME_ROLE)                     # filename exposed
+    assert isinstance(model.data(idx, DATE_ROLE), str)    # date string (may be "")
+
+    # Hover row is tracked for the delegate to highlight.
+    grid._delegate.set_hover_row(2)
+    assert grid._delegate._hover_row == 2
+
+
 def test_main_window_has_three_pane_shell(qapp, clean_db) -> None:
     from viewer.main_window import MainWindow
 

@@ -23,6 +23,8 @@ from viewer import theme
 
 # Roles exposed by the model.
 PHOTO_ID_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 1
+NAME_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 2
+DATE_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 3
 
 # (offset, limit) -> rows of (id, file_path, thumbnail_path, taken_at)
 Fetcher = Callable[[int, int], list[tuple[int, str, Optional[str], Any]]]
@@ -156,6 +158,11 @@ class PhotoGridModel(QtCore.QAbstractListModel):
 
         if role == PHOTO_ID_ROLE:
             return photo_id
+        if role == NAME_ROLE:
+            return Path(file_path).name
+        if role == DATE_ROLE:
+            taken = self._rows[index.row()][3]
+            return taken.strftime("%b %d, %Y") if hasattr(taken, "strftime") else ""
         if role == QtCore.Qt.ItemDataRole.ToolTipRole:
             return Path(file_path).name
         if role == QtCore.Qt.ItemDataRole.DecorationRole:
@@ -191,6 +198,86 @@ class PhotoGridModel(QtCore.QAbstractListModel):
         )
 
 
+class PhotoTileDelegate(QtWidgets.QStyledItemDelegate):
+    """Paints each photo as a rounded tile with hover-reveal date + selection.
+
+    Purely presentational — it reads the model's pixmap/name/date roles and
+    paints them; the view stays the same virtualized ``QListView``, so the
+    premium look costs nothing in scroll performance. The hovered row is pushed
+    in by the view (``set_hover_row``) so the delegate can highlight it.
+    """
+
+    def __init__(self, parent: QtWidgets.QWidget) -> None:
+        super().__init__(parent)
+        self._hover_row = -1
+
+    def set_hover_row(self, row: int) -> None:
+        self._hover_row = row
+
+    def sizeHint(self, option, index):  # noqa: N802
+        # Square cells — no reserved (empty) text row, so tiles fill edge-to-edge.
+        tile = option.decorationSize.width() or 168
+        return QtCore.QSize(tile, tile)
+
+    def paint(self, painter, option, index):  # noqa: N802
+        pm = index.data(QtCore.Qt.ItemDataRole.DecorationRole)
+        target = option.rect
+        painter.save()
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.SmoothPixmapTransform, True)
+
+        if pm is not None and not pm.isNull():
+            path = QtGui.QPainterPath()
+            path.addRoundedRect(QtCore.QRectF(target), theme.RADIUS, theme.RADIUS)
+            painter.setClipPath(path)
+            # Fill the tile edge-to-edge, centre-cropping to the square (the
+            # gapless Google-Photos look) rather than letterboxing.
+            scaled = pm.scaled(
+                target.size(),
+                QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
+            )
+            sx = (scaled.width() - target.width()) // 2
+            sy = (scaled.height() - target.height()) // 2
+            painter.drawPixmap(target, scaled, QtCore.QRect(sx, sy, target.width(), target.height()))
+            painter.setClipping(False)
+
+            if index.row() == self._hover_row:
+                scrim = QtGui.QLinearGradient(
+                    target.left(), target.bottom() - 34, target.left(), target.bottom())
+                scrim.setColorAt(0, QtGui.QColor(0, 0, 0, 0))
+                scrim.setColorAt(1, QtGui.QColor(0, 0, 0, 165))
+                painter.setClipPath(path)
+                painter.fillRect(target, scrim)
+                painter.setClipping(False)
+                date = index.data(DATE_ROLE) or index.data(NAME_ROLE) or ""
+                painter.setPen(QtGui.QColor("#ffffff"))
+                f = painter.font(); f.setPointSize(8); painter.setFont(f)
+                painter.drawText(
+                    target.adjusted(8, 0, -8, -6),
+                    int(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignBottom),
+                    str(date),
+                )
+
+            if option.state & QtWidgets.QStyle.StateFlag.State_Selected:
+                pen = QtGui.QPen(QtGui.QColor(theme.PRIMARY), 3)
+                painter.setPen(pen)
+                painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+                painter.drawRoundedRect(
+                    QtCore.QRectF(target.adjusted(1, 1, -1, -1)), theme.RADIUS, theme.RADIUS)
+                r = 11
+                badge = QtCore.QRect(target.right() - r * 2 - 6, target.top() + 6, r * 2, r * 2)
+                painter.setBrush(QtGui.QColor(theme.PRIMARY_DEEP))
+                painter.setPen(QtCore.Qt.PenStyle.NoPen)
+                painter.drawEllipse(badge)
+                painter.setPen(QtGui.QPen(QtGui.QColor("#ffffff"), 2))
+                painter.drawLine(badge.left() + 6, badge.center().y(),
+                                 badge.center().x() - 1, badge.bottom() - 6)
+                painter.drawLine(badge.center().x() - 1, badge.bottom() - 6,
+                                 badge.right() - 5, badge.top() + 7)
+        painter.restore()
+
+
 class PhotoGrid(QtWidgets.QListView):
     """Icon-mode grid view over a :class:`PhotoGridModel`."""
 
@@ -207,6 +294,9 @@ class PhotoGrid(QtWidgets.QListView):
         self._has_person_context = False       # True on a person-detail page
         self._person_name = ""                 # that person's display name
 
+        self._delegate = PhotoTileDelegate(self)
+        self.setItemDelegate(self._delegate)
+
         self.setViewMode(QtWidgets.QListView.ViewMode.IconMode)
         self.setResizeMode(QtWidgets.QListView.ResizeMode.Adjust)
         self.setMovement(QtWidgets.QListView.Movement.Static)
@@ -214,10 +304,24 @@ class PhotoGrid(QtWidgets.QListView):
         self.setUniformItemSizes(True)
         self.setSpacing(10)
         self.setWordWrap(False)
+        self.setMouseTracking(True)            # hover-reveal needs move events
         self.verticalScrollBar().setSingleStep(28)
         self._apply_tile()
 
         self.doubleClicked.connect(self._on_activated)
+
+    def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:  # noqa: N802
+        row = self.indexAt(event.pos()).row()
+        if row != self._delegate._hover_row:
+            self._delegate.set_hover_row(row)
+            self.viewport().update()
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event: QtCore.QEvent) -> None:  # noqa: N802
+        if self._delegate._hover_row != -1:
+            self._delegate.set_hover_row(-1)
+            self.viewport().update()
+        super().leaveEvent(event)
 
     def _apply_tile(self) -> None:
         tile = self._model.tile_size()
