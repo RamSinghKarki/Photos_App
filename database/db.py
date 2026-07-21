@@ -1106,6 +1106,40 @@ def library_stats(cur: PgCursor) -> dict[str, int]:
     }
 
 
+def knowledge_stats(cur: PgCursor) -> dict[str, Any]:
+    """Everything the app has learned about the library (Insights page).
+
+    A single round-trip of correlated counts: how many photos, how many carry a
+    capture date / GPS / recognized text, how many faces (and how many still
+    ungrouped), how many people (and how many named), how many photos are
+    semantically searchable, the capture-date span and total bytes on disk.
+    """
+    cur.execute(
+        """
+        SELECT
+            (SELECT count(*) FROM photos),
+            (SELECT count(*) FROM photos WHERE taken_at IS NOT NULL),
+            (SELECT count(*) FROM photos WHERE gps_latitude IS NOT NULL),
+            (SELECT count(*) FROM photos WHERE ocr_text IS NOT NULL AND ocr_text <> ''),
+            (SELECT count(*) FROM faces),
+            (SELECT count(*) FROM faces WHERE person_id IS NULL),
+            (SELECT count(*) FROM persons),
+            (SELECT count(*) FROM persons WHERE display_name IS NOT NULL),
+            (SELECT count(*) FROM clip_embeddings),
+            (SELECT min(taken_at) FROM photos),
+            (SELECT max(taken_at) FROM photos),
+            (SELECT coalesce(sum(file_size), 0) FROM photos)
+        """
+    )
+    r = cur.fetchone()
+    return {
+        "photos": int(r[0]), "dated": int(r[1]), "located": int(r[2]),
+        "with_text": int(r[3]), "faces": int(r[4]), "faces_ungrouped": int(r[5]),
+        "persons": int(r[6]), "named_persons": int(r[7]), "searchable": int(r[8]),
+        "first_date": r[9], "last_date": r[10], "storage_bytes": int(r[11]),
+    }
+
+
 def list_photo_grid(
     cur: PgCursor,
     limit: int,

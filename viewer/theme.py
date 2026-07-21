@@ -158,6 +158,10 @@ def build_stylesheet() -> str:
     }}
     QProgressBar::chunk {{ background-color: {PRIMARY}; border-radius: 5px; }}
 
+    /* Insights stat cards */
+    QLabel#StatValue {{ font-size: 30px; font-weight: 800; color: {TEXT}; }}
+    QLabel#StatLabel {{ font-size: 13px; font-weight: 600; color: {TEXT_MUTED}; }}
+
     /* Search: suggestion chips (idle state) + "why matched" evidence chips */
     QPushButton#SearchSuggest {{
         background-color: {SURFACE_ALT}; border: 1px solid {BORDER};

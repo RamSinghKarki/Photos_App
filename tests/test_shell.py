@@ -296,6 +296,37 @@ def test_review_center_empty_state(qapp, clean_db) -> None:
     assert page._scroll.isHidden()
 
 
+def test_insights_reflects_library(qapp, clean_db, photo_tree) -> None:
+    from scanner.scanner import scan_directory
+    from viewer.system_pages import InsightsPage
+
+    page = InsightsPage()
+    page.refresh()  # empty library
+    assert not page._empty.isHidden()
+    assert page._cards[0].isHidden()
+
+    scan_directory(photo_tree)  # 5 photos, one dated (2021)
+    page.refresh()
+    assert page._empty.isHidden()
+    assert not page._cards[0].isHidden()
+    assert page._cards[0]._value.text() == "5"            # photo count
+    assert page._cards[0]._label.text() == "Photos"
+    assert "2021" in page._cards[0]._detail.text()        # date span
+    assert not page._trust.isHidden()
+
+
+def test_about_states_offline_promise(qapp) -> None:
+    from viewer.system_pages import APP_VERSION, AboutPage
+
+    page = AboutPage()
+    labels = [w.text() for w in page.findChildren(__import__("PySide6").QtWidgets.QLabel)]
+    joined = " ".join(labels)
+    assert f"Version {APP_VERSION}" in joined
+    assert "100% offline" in joined
+    assert "never modified" in joined
+    assert "PostgreSQL" in joined
+
+
 def test_main_window_has_three_pane_shell(qapp, clean_db) -> None:
     from viewer.main_window import MainWindow
 

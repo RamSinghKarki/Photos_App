@@ -41,6 +41,7 @@ PAGES: tuple[PageSpec, ...] = (
     PageSpec("people", "People", "AI"),
     PageSpec("search", "Search", "AI"),
     PageSpec("review", "Review", "AI"),
+    PageSpec("insights", "Insights", "AI"),
     PageSpec("objects", "Objects", "AI",
              planned="Object Detection — planned AI module."),
     PageSpec("similar", "Similar Photos", "AI",
@@ -58,8 +59,7 @@ PAGES: tuple[PageSpec, ...] = (
     # System
     PageSpec("settings", "Settings", "System",
              planned="Settings — planned configuration module."),
-    PageSpec("about", "About", "System",
-             planned="PhotoSphere AI — a fully offline, local AI photo manager."),
+    PageSpec("about", "About", "System"),
 )
 
 

@@ -20,6 +20,12 @@ def library_stats() -> dict[str, int]:
         return db.library_stats(cur)
 
 
+def knowledge_stats() -> dict[str, Any]:
+    """Everything the app has learned about the library (Insights page)."""
+    with timer("query.knowledge_stats"), db.connection() as conn, conn.cursor() as cur:
+        return db.knowledge_stats(cur)
+
+
 def photo_grid(
     limit: int,
     offset: int = 0,
