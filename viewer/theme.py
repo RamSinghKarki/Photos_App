@@ -158,6 +158,27 @@ def build_stylesheet() -> str:
     }}
     QProgressBar::chunk {{ background-color: {PRIMARY}; border-radius: 5px; }}
 
+    /* Timeline scrubber rail (Year → month, replaces the old tree) */
+    QScrollArea#TimelineRail {{ background-color: {SURFACE}; border: none; border-right: 1px solid {BORDER}; }}
+    QScrollArea#TimelineRail > QWidget > QWidget {{ background-color: {SURFACE}; }}
+    QLabel#TimelineYear {{
+        color: {TEXT}; font-size: 15px; font-weight: 800;
+        padding: 16px 10px 4px 12px;
+    }}
+    QFrame#TimelineMonth {{
+        border: none; border-radius: {RADIUS}px; margin: 1px 6px;
+        border-left: 3px solid transparent;
+    }}
+    QFrame#TimelineMonth:hover {{ background-color: {SURFACE_ALT}; }}
+    QFrame#TimelineMonth[selected="true"] {{
+        background-color: {ACCENT_SOFT}; border-left: 3px solid {PRIMARY};
+    }}
+    QLabel#TimelineMonthName {{ color: {TEXT_MUTED}; font-size: 13px; padding: 0; }}
+    QFrame#TimelineMonth:hover QLabel#TimelineMonthName {{ color: {TEXT}; }}
+    QFrame#TimelineMonth[selected="true"] QLabel#TimelineMonthName {{ color: {TEXT}; font-weight: 600; }}
+    QLabel#TimelineCount {{ color: {TEXT_FAINT}; font-size: 12px; }}
+    QLabel#TimelineHero {{ font-size: 26px; font-weight: 800; }}
+
     /* Photo grid */
     QListView#PhotoGrid {{ background-color: {BACKGROUND}; border: none; padding: 8px; }}
     QListView#PhotoGrid::item {{ border-radius: {RADIUS}px; }}

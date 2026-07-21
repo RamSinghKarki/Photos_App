@@ -157,6 +157,43 @@ def test_person_profile_header(qapp, clean_db) -> None:
     assert page._aw_container.count() == 1
 
 
+def test_timeline_rail_and_hero(qapp, clean_db, photo_tree) -> None:
+    from scanner.scanner import scan_directory
+    from viewer.timeline_page import TimelinePage, _MonthRow
+
+    scan_directory(photo_tree)  # one dated photo: with_exif.jpg, 2021-07
+
+    page = TimelinePage()
+    page.refresh()
+
+    # The rail carries exactly one month row (July 2021) and it's auto-selected.
+    rows = page.findChildren(_MonthRow)
+    assert len(rows) == 1
+    assert page._selected == (2021, 7)
+    assert rows[0].property("selected") == "true"
+
+    # Hero header and count reflect the selected month.
+    assert page._hero.text() == "July 2021"
+    assert page._subtitle.text() == "1 photo"          # singular
+    assert page._empty.isHidden()      # empty prompt hidden when photos exist
+    assert not page._grid.isHidden()   # grid shown
+
+    # Re-selecting the same month is a no-op (no animation restart).
+    page._show_month(2021, 7)
+    assert page._selected == (2021, 7)
+
+
+def test_timeline_empty_state(qapp, clean_db) -> None:
+    from viewer.timeline_page import TimelinePage, _MonthRow
+
+    page = TimelinePage()
+    page.refresh()  # empty library
+    assert page.findChildren(_MonthRow) == []
+    assert page._hero.text() == "Timeline"
+    assert not page._empty.isHidden()   # empty prompt shown
+    assert page._grid.isHidden()        # grid hidden with nothing to show
+
+
 def test_main_window_has_three_pane_shell(qapp, clean_db) -> None:
     from viewer.main_window import MainWindow
 
