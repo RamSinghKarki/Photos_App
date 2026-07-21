@@ -327,6 +327,33 @@ def test_about_states_offline_promise(qapp) -> None:
     assert "PostgreSQL" in joined
 
 
+def test_reduced_motion_collapses_durations(qapp, monkeypatch) -> None:
+    from viewer import theme
+
+    monkeypatch.setenv("PHOTOSPHERE_REDUCED_MOTION", "1")
+    assert theme.reduced_motion() is True
+    assert theme.motion_ms("fade") == 0
+    assert theme.motion_ms("photo_open") == 0
+
+    # A page built under the preference disables its transition.
+    from viewer.timeline_page import TimelinePage
+    assert TimelinePage()._fade_anim.duration() == 0
+
+    monkeypatch.delenv("PHOTOSPHERE_REDUCED_MOTION", raising=False)
+    assert theme.reduced_motion() is False
+    assert theme.motion_ms("fade") == theme.MOTION_MS["fade"]
+
+
+def test_stylesheet_has_visible_focus(qapp) -> None:
+    from viewer import theme
+
+    qss = theme.build_stylesheet()
+    # Keyboard focus must be visible on the primary navigable controls.
+    assert "QPushButton:focus" in qss
+    assert "QPushButton#NavItem:focus" in qss
+    assert "QPushButton#SearchSuggest:focus" in qss
+
+
 def test_main_window_has_three_pane_shell(qapp, clean_db) -> None:
     from viewer.main_window import MainWindow
 

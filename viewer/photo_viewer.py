@@ -88,7 +88,7 @@ class PhotoViewer(QtWidgets.QDialog):
         self.requested_similar: Optional[int] = None
 
         self._fade = QtCore.QPropertyAnimation(self, b"windowOpacity", self)
-        self._fade.setDuration(theme.MOTION_MS["photo_open"])
+        self._fade.setDuration(theme.motion_ms("photo_open"))
         self._fade.setStartValue(0.0)
         self._fade.setEndValue(1.0)
         self._faded_in = False

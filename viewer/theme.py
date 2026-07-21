@@ -8,6 +8,8 @@ reads as modern native desktop software, not a web page.
 
 from __future__ import annotations
 
+import os
+
 # --- Palette (PhotoSphere 2.0 dark identity, PDD §4) -----------------------
 # Layered surfaces L0..L3 (window → cards → dialogs → popups); a neutral ramp
 # with a faint cool bias toward the accent, one blue accent, semantic status.
@@ -45,6 +47,22 @@ MOTION_MS = {
     "hover": 120, "selection": 150, "fade": 150,
     "dialog": 180, "sidebar": 200, "photo_open": 220,
 }  # hard cap 250 ms (PDD); every animation interruptible
+
+
+def reduced_motion() -> bool:
+    """True when the user asked to minimize animation (accessibility, PDD §4).
+
+    Honours ``PHOTOSPHERE_REDUCED_MOTION`` (1/true/yes/on). When set, motion
+    durations collapse to 0 so transitions land instantly with no movement.
+    """
+    return os.environ.get("PHOTOSPHERE_REDUCED_MOTION", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def motion_ms(key: str) -> int:
+    """Duration for a named motion token — 0 when reduced motion is requested."""
+    return 0 if reduced_motion() else MOTION_MS[key]
 
 
 def build_stylesheet() -> str:
@@ -131,6 +149,7 @@ def build_stylesheet() -> str:
         background: transparent; font-size: 14px;
     }}
     QPushButton#NavItem:hover {{ background-color: {SURFACE_ALT}; color: {TEXT}; }}
+    QPushButton#NavItem:focus {{ background-color: {SURFACE_ALT}; color: {TEXT}; }}
     QPushButton#NavItem:checked {{
         background-color: {ACCENT_SOFT}; color: {TEXT};
         border-left: 3px solid {PRIMARY}; padding-left: 11px; font-weight: 600;
@@ -142,9 +161,11 @@ def build_stylesheet() -> str:
         border-radius: {RADIUS}px; padding: 8px 16px; color: {TEXT};
     }}
     QPushButton:hover {{ border-color: {PRIMARY}; }}
+    QPushButton:focus {{ border-color: {PRIMARY}; }}
     QPushButton:pressed {{ background-color: {SURFACE}; }}
     QPushButton#Primary {{ background-color: {PRIMARY_DEEP}; border: none; color: #ffffff; font-weight: 600; }}
     QPushButton#Primary:hover {{ background-color: {PRIMARY}; }}
+    QPushButton#Primary:focus {{ background-color: {PRIMARY}; }}
 
     /* Status bar */
     QFrame#StatusBar {{ background-color: {SURFACE}; border: none; border-top: 1px solid {BORDER}; }}
@@ -168,6 +189,7 @@ def build_stylesheet() -> str:
         border-radius: 16px; padding: 9px 16px; color: {TEXT}; font-size: 13px;
     }}
     QPushButton#SearchSuggest:hover {{ border-color: {PRIMARY}; background-color: {SURFACE_HI}; }}
+    QPushButton#SearchSuggest:focus {{ border-color: {PRIMARY}; background-color: {SURFACE_HI}; }}
     QLabel#SearchHint {{ color: {TEXT_MUTED}; font-size: 15px; }}
     QLabel#SearchHintSmall {{ color: {TEXT_FAINT}; font-size: 12px; }}
     QLabel#WhyChip {{

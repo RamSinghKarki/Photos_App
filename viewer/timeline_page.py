@@ -114,7 +114,7 @@ class TimelinePage(QtWidgets.QWidget):
         self._fade.setOpacity(1.0)
         self._grid.setGraphicsEffect(self._fade)
         self._fade_anim = QtCore.QPropertyAnimation(self._fade, b"opacity", self)
-        self._fade_anim.setDuration(theme.MOTION_MS["fade"])
+        self._fade_anim.setDuration(theme.motion_ms("fade"))
         content_layout.addWidget(self._grid, 1)
 
         self._empty = QtWidgets.QLabel(
