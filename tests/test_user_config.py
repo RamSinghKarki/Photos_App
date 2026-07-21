@@ -94,3 +94,27 @@ def test_env_export_wins_and_undoes_cleanly(tmp_path: Path) -> None:
         else:
             os.environ["PHOTOSPHERE_FACE_MATCH_THRESHOLD"] = saved
         get_settings.cache_clear()
+
+
+def test_ui_scale_validation_and_apply(tmp_path, monkeypatch) -> None:
+    import os
+    from config.user_config import ConfigManager
+
+    cfg = ConfigManager(path=tmp_path / "config.json")
+    assert cfg.get("appearance", "ui_scale") == 1.0
+    cfg.set("appearance", "ui_scale", 0.8)
+    assert cfg.get("appearance", "ui_scale") == 0.8
+    import pytest
+    with pytest.raises(ValueError):
+        cfg.set("appearance", "ui_scale", 3.0)     # out of range
+
+    # _apply_ui_scale exports QT_SCALE_FACTOR from the stored preference.
+    monkeypatch.setenv("PHOTOSPHERE_CONFIG_DIR", str(tmp_path))
+    monkeypatch.delenv("QT_SCALE_FACTOR", raising=False)
+    from config.user_config import get_config
+    get_config.cache_clear()
+    from viewer.app import _apply_ui_scale
+    _apply_ui_scale()
+    assert os.environ.get("QT_SCALE_FACTOR") == "0.8"
+    monkeypatch.delenv("QT_SCALE_FACTOR", raising=False)
+    get_config.cache_clear()

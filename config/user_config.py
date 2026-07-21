@@ -40,6 +40,10 @@ DEFAULTS: dict[str, dict[str, Any]] = {
     },
     "appearance": {
         "reduced_motion": False,
+        # Interface size multiplier applied on top of the OS display scaling —
+        # lets a high-DPI user make the app denser than their global scale.
+        # 1.0 = follow the OS exactly. Applied at launch (needs a restart).
+        "ui_scale": 1.0,
     },
     "ai": {
         "face_match_threshold": None,    # None -> keep system default
@@ -80,6 +84,11 @@ def _validate(section: str, key: str, value: Any) -> Any:
                           ("appearance", "reduced_motion"),
                           ("ai", "auto_suggestions")):
         return bool(value)
+    if (section, key) == ("appearance", "ui_scale"):
+        v = float(value)
+        if not (0.6 <= v <= 1.5):
+            raise ValueError("ui_scale must be within 0.6–1.5")
+        return v
     if (section, key) == ("ai", "face_match_threshold"):
         if value is None:
             return None

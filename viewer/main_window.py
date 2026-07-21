@@ -49,7 +49,11 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("PhotoSphere AI")
-        self.resize(1320, 860)
+        # Small enough to fit a cramped logical screen (e.g. 1080p at 200%
+        # scaling is only 960x540 logical); the inspector auto-hides below
+        # 1180px so the three panes never force overflow.
+        self.setMinimumSize(720, 480)
+        self._fit_to_screen(1320, 860)
 
         self._state = AppState()
         self._current_page = "dashboard"
@@ -177,11 +181,37 @@ class MainWindow(QtWidgets.QMainWindow):
         self.refresh_all()
 
     # -- session state (resume where you left off) ---------------------------
+    def _fit_to_screen(self, desired_w: int, desired_h: int) -> None:
+        """Size the window to at most the available screen, and centre it.
+
+        A hard-coded default (or a saved geometry from a bigger monitor) can be
+        larger than the current logical screen — which at high display scaling
+        (e.g. 200%) is small — making the window overflow. Clamp to the screen.
+        """
+        screen = self.screen() or QtWidgets.QApplication.primaryScreen()
+        if screen is None:
+            self.resize(desired_w, desired_h)
+            return
+        avail = screen.availableGeometry()
+        w = min(desired_w, int(avail.width() * 0.94))
+        h = min(desired_h, int(avail.height() * 0.94))
+        self.resize(w, h)
+        self.move(avail.x() + (avail.width() - w) // 2,
+                  avail.y() + (avail.height() - h) // 2)
+
     def _restore_state(self) -> None:
         """Restore window geometry, gallery zoom, and the last page on launch."""
         geometry = self._state.geometry()
         if geometry is not None:
             self.restoreGeometry(geometry)
+            # A geometry saved on a larger/less-scaled display must not spill off
+            # the current screen — refit if it no longer fits.
+            screen = self.screen() or QtWidgets.QApplication.primaryScreen()
+            if screen is not None:
+                avail = screen.availableGeometry()
+                if (self.width() > avail.width() or self.height() > avail.height()
+                        or not avail.intersects(self.frameGeometry())):
+                    self._fit_to_screen(self.width(), self.height())
 
         self._gallery.set_tile_size(self._state.tile(self._gallery.tile_size()))
 

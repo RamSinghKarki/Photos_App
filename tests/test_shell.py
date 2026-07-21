@@ -450,3 +450,22 @@ def test_main_window_has_three_pane_shell(qapp, clean_db) -> None:
         win.show_page("dashboard")
     finally:
         win.close()
+
+
+def test_window_fits_small_screen(qapp, clean_db) -> None:
+    """The window must never open larger than the available screen — the cause
+    of the 'everything oversized' overflow at 200% display scaling (a small
+    logical screen). Verified against whatever the (small, offscreen) screen is."""
+    from PySide6 import QtWidgets
+    from viewer.main_window import MainWindow
+
+    screen = QtWidgets.QApplication.primaryScreen()
+    avail = screen.availableGeometry()
+    win = MainWindow()
+    try:
+        assert win.width() <= avail.width()
+        assert win.height() <= avail.height()
+        # And it can still shrink for a cramped 1080p-at-200% logical screen.
+        assert win.minimumWidth() <= 960 and win.minimumHeight() <= 540
+    finally:
+        win.close()

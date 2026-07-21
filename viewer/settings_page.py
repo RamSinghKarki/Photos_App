@@ -23,6 +23,7 @@ from viewer.gpuinfo import detect_gpu
 _PAGE_CHOICES = [("Dashboard", "dashboard"), ("Photos", "photos"),
                  ("Timeline", "timeline"), ("People", "people"), ("Search", "search")]
 _ALGO_CHOICES = [("Automatic", None), ("DBSCAN", "dbscan"), ("HDBSCAN", "hdbscan")]
+_SCALE_CHOICES = [("Compact", 0.8), ("Cozy", 0.9), ("Default", 1.0), ("Large", 1.15)]
 
 
 class SettingsPage(QtWidgets.QScrollArea):
@@ -118,6 +119,27 @@ class SettingsPage(QtWidgets.QScrollArea):
         self._motion.toggled.connect(lambda v: self._cfg.set("appearance", "reduced_motion", v))
         form.addRow("Motion", self._motion)
         form.addRow("", self._note("Applies immediately to new transitions."))
+
+        # Interface size — density on top of the OS display scaling. Handy on a
+        # high-DPI laptop where 200% scaling makes everything feel oversized.
+        self._ui_scale = QtWidgets.QComboBox()
+        for label, value in _SCALE_CHOICES:
+            self._ui_scale.addItem(label, value)
+        cur_scale = float(self._cfg.get("appearance", "ui_scale"))
+        idx = min(range(len(_SCALE_CHOICES)),
+                  key=lambda i: abs(_SCALE_CHOICES[i][1] - cur_scale))
+        self._ui_scale.setCurrentIndex(idx)
+        self._ui_scale.currentIndexChanged.connect(self._on_ui_scale)
+        form.addRow("Interface size", self._ui_scale)
+        self._scale_note = self._note("Smaller = more fits on screen. Takes effect after a restart.")
+        form.addRow("", self._scale_note)
+
+    def _on_ui_scale(self, index: int) -> None:
+        value = self._ui_scale.itemData(index)
+        self._cfg.set("appearance", "ui_scale", value)
+        self._scale_note.setText(
+            f"Set to {self._ui_scale.itemText(index)} ({value:g}×). "
+            "Restart PhotoSphere to apply.")
 
     def _build_ai(self) -> None:
         form = self._card("AI & Recognition")
