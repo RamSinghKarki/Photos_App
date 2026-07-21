@@ -27,6 +27,7 @@ from viewer.photo_viewer import PhotoViewer
 from viewer.search_page import SearchPage
 from viewer.state import AppState
 from viewer.tasks import PipelineWorker
+from viewer.review_page import ReviewPage
 from viewer.timeline_page import TimelinePage
 
 # Inspector context width threshold (PDD §3.2 responsive rule).
@@ -74,6 +75,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._person_detail = PersonDetailPage()
         self._search = SearchPage()
         self._timeline = TimelinePage()
+        self._review = ReviewPage()
+        self._review.changed.connect(self.refresh_all)
 
         self._search.photo_activated.connect(
             lambda pid: self._open_viewer(self._search.current_photo_ids(), pid)
@@ -110,6 +113,7 @@ class MainWindow(QtWidgets.QMainWindow):
             ("people", self._people),
             ("search", self._search),
             ("timeline", self._timeline),
+            ("review", self._review),
         ):
             self._page_keys[key] = self._stack.addWidget(widget)
         self._detail_index = self._stack.addWidget(self._person_detail)
@@ -232,6 +236,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._people.refresh()
                 elif key == "timeline":
                     self._timeline.refresh()
+                elif key == "review":
+                    self._review.refresh()
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not refresh page '%s': %s", key, exc)
 

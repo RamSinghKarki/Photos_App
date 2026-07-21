@@ -40,6 +40,7 @@ PAGES: tuple[PageSpec, ...] = (
     # AI
     PageSpec("people", "People", "AI"),
     PageSpec("search", "Search", "AI"),
+    PageSpec("review", "Review", "AI"),
     PageSpec("objects", "Objects", "AI",
              planned="Object Detection — planned AI module."),
     PageSpec("similar", "Similar Photos", "AI",

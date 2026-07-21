@@ -102,7 +102,7 @@ class DashboardPage(QtWidgets.QWidget):
         cards.setSpacing(14)
 
         self._review_card = _ClickCard()
-        self._review_card.clicked.connect(lambda: self.navigate.emit("people"))
+        self._review_card.clicked.connect(lambda: self.navigate.emit("review"))
         rc = QtWidgets.QVBoxLayout(self._review_card)
         rc.setContentsMargins(18, 16, 18, 16)
         self._review_title = QtWidgets.QLabel("AI needs your help")
@@ -203,7 +203,7 @@ class DashboardPage(QtWidgets.QWidget):
         if review:
             self._review_title.setText(f"AI needs your help  ·  {review}")
             self._review_detail.setText(
-                f"{review} question(s) waiting — open People to review.")
+                f"{review} question(s) waiting — click to review.")
         else:
             self._review_title.setText("All caught up")
             self._review_detail.setText("Nothing needs your attention right now.")

@@ -883,6 +883,36 @@ def list_merge_suggestions_detail(cur: PgCursor) -> list[dict[str, Any]]:
     ]
 
 
+def list_all_suggestions_detail(cur: PgCursor, limit: int = 100) -> list[dict[str, Any]]:
+    """Pending 'Is this <person>?' face suggestions across everyone, best first.
+
+    Each row carries the candidate face crop (the ungrouped face being proposed),
+    the proposed person's name and a reference cover crop, so the Review center
+    can show evidence (both faces) beside a Yes/No verdict.
+    """
+    cur.execute(
+        """
+        SELECT rs.face_id, f.crop_path, rs.score, rs.person_id,
+               p.display_name, cov.crop_path
+          FROM recognition_suggestions rs
+          JOIN faces f ON f.id = rs.face_id
+          JOIN persons p ON p.id = rs.person_id
+          LEFT JOIN faces cov ON cov.id = p.cover_face_id
+         WHERE f.person_id IS NULL
+         ORDER BY rs.score DESC, rs.face_id
+         LIMIT %s
+        """,
+        (limit,),
+    )
+    return [
+        {
+            "face_id": int(r[0]), "crop_path": r[1], "score": float(r[2]),
+            "person_id": int(r[3]), "name": r[4], "cover_path": r[5],
+        }
+        for r in cur.fetchall()
+    ]
+
+
 def fetch_rejections(cur: PgCursor) -> dict[int, set[int]]:
     """Return person_id -> set(face_id) of rejected pairs (recognition blocklist)."""
     cur.execute(

@@ -91,9 +91,9 @@ def test_dashboard_activity_center(qapp, clean_db) -> None:
     assert page._review_title.text() == "All caught up"
     assert page._recent.isHidden()                # no strips with no photos
 
-    # The review card routes to People.
+    # The review card routes to the Review center.
     page._review_card.clicked.emit()
-    assert nav == ["people"]
+    assert nav == ["review"]
 
 
 def test_gallery_tile_delegate_and_roles(qapp, clean_db, photo_tree) -> None:
@@ -230,6 +230,70 @@ def test_search_idle_suggestions_and_why_chips(qapp) -> None:
     page._input.clear()
     page._run()
     assert page._suggest.isVisibleTo(page)
+
+
+def test_review_center_lists_and_resolves(qapp, clean_db) -> None:
+    import datetime as _dt
+    import numpy as np
+    from clustering.clusterer import normalize_embeddings
+    from database import db
+    from viewer.review_page import ReviewPage, _FaceRow, _MergeRow
+
+    def _emb():
+        v = normalize_embeddings(np.random.default_rng().standard_normal((1, 512)).astype("float32"))
+        return v[0].tolist()
+
+    with db.connection() as conn, conn.cursor() as cur:
+        meta = db.PhotoMetadata(file_path="/v/r.jpg", file_hash="hr", file_size=1,
+                                file_mtime=_dt.datetime(2020, 1, 1))
+        pid = db.insert_photo(cur, meta)
+        named_face = db.insert_face(cur, pid, (0, 0, 40, 40), _emb(),
+                                    det_score=0.9, crop_path="/v/named.jpg")
+        person = db.create_person(cur, 1, named_face)
+        db.assign_faces_to_person(cur, person, [named_face])
+        db.rename_person(cur, person, "Ram")
+        # A second (unnamed) profile to suggest merging into Ram.
+        other_face = db.insert_face(cur, pid, (60, 0, 40, 40), _emb(),
+                                    det_score=0.9, crop_path="/v/other.jpg")
+        other = db.create_person(cur, 1, other_face)
+        db.assign_faces_to_person(cur, other, [other_face])
+        db.replace_merge_suggestions(cur, [(person, other, 0.61)])
+        # An ungrouped face suggested as Ram.
+        loose = db.insert_face(cur, pid, (0, 60, 40, 40), _emb(),
+                               det_score=0.9, crop_path="/v/loose.jpg")
+        db.record_suggestion(cur, loose, person, 0.55)
+
+    page = ReviewPage()
+    signals: list[int] = []
+    page.changed.connect(lambda: signals.append(1))
+    page.refresh()
+
+    assert len(page.findChildren(_MergeRow)) == 1
+    assert len(page.findChildren(_FaceRow)) == 1
+    assert "2 questions waiting" in page._subtitle.text()
+    assert not page._empty.isVisible() or not page._empty.isVisibleTo(page)
+
+    # Accept the face suggestion; the runner works off-thread, so pump until done.
+    face_row = page.findChild(_FaceRow)
+    face_row.confirmed.emit(loose, person)  # simulate the Yes button
+    deadline = __import__("time").time() + 5
+    while page._runner.busy() and __import__("time").time() < deadline:
+        qapp.processEvents()
+    qapp.processEvents()
+
+    assert signals                              # changed fired
+    with db.connection() as conn, conn.cursor() as cur:
+        assert db.count_suggestions(cur) == 0   # the suggestion was consumed
+
+
+def test_review_center_empty_state(qapp, clean_db) -> None:
+    from viewer.review_page import ReviewPage, _FaceRow, _MergeRow
+
+    page = ReviewPage()
+    page.refresh()
+    assert page.findChildren(_MergeRow) == [] and page.findChildren(_FaceRow) == []
+    assert not page._empty.isHidden()
+    assert page._scroll.isHidden()
 
 
 def test_main_window_has_three_pane_shell(qapp, clean_db) -> None:

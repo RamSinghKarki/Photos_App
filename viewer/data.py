@@ -159,6 +159,12 @@ def suggestion_count() -> int:
         return db.count_suggestions(cur)
 
 
+def all_suggestions(limit: int = 100) -> list[dict[str, Any]]:
+    """Pending 'Is this <person>?' face suggestions across everyone (Review center)."""
+    with timer("query.all_suggestions"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_all_suggestions_detail(cur, limit)
+
+
 def confirm_suggestion(face_id: int, person_id: int) -> None:
     """Accept a suggestion: assign the face, teach the profile, remember 'yes'."""
     from clustering.incremental import confirm_face
