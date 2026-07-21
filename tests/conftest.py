@@ -17,6 +17,11 @@ os.environ.setdefault("PHOTOSPHERE_DB_HOST", "127.0.0.1")
 # whether the optional `hdbscan` package is installed. (The clusterer's "auto"
 # path is still covered directly in test_clustering.py.)
 os.environ.setdefault("PHOTOSPHERE_CLUSTER_ALGORITHM", "dbscan")
+# User preferences live under the home directory in production; tests get a
+# throwaway location so they never read or write the developer's real config.
+import tempfile as _tempfile  # noqa: E402
+
+os.environ.setdefault("PHOTOSPHERE_CONFIG_DIR", _tempfile.mkdtemp(prefix="ps_cfg_"))
 
 
 @pytest.fixture(autouse=True)

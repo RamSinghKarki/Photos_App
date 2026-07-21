@@ -44,7 +44,10 @@ class _SearchWorker(QtCore.QThread):
 
     def run(self) -> None:
         try:
-            self.done.emit(self._engine.search(self._query, filters=self._filters))
+            from config.user_config import get_config
+            limit = int(get_config().get("search", "result_limit"))
+            self.done.emit(
+                self._engine.search(self._query, limit=limit, filters=self._filters))
         except Exception as exc:  # noqa: BLE001
             logger.exception("Search failed")
             self.failed.emit(str(exc))

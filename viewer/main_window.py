@@ -80,6 +80,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._review.changed.connect(self.refresh_all)
         self._insights = InsightsPage()
         self._about = AboutPage()
+        from viewer.settings_page import SettingsPage
+        self._settings = SettingsPage()
 
         self._search.photo_activated.connect(
             lambda pid: self._open_viewer(self._search.current_photo_ids(), pid)
@@ -119,6 +121,7 @@ class MainWindow(QtWidgets.QMainWindow):
             ("review", self._review),
             ("insights", self._insights),
             ("about", self._about),
+            ("settings", self._settings),
         ):
             self._page_keys[key] = self._stack.addWidget(widget)
         self._detail_index = self._stack.addWidget(self._person_detail)
@@ -172,8 +175,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._gallery.set_tile_size(self._state.tile(self._gallery.tile_size()))
 
-        # Only restore to a page that still exists; fall back to dashboard.
-        last = self._state.page("dashboard")
+        # Only restore to a page that still exists; otherwise the user's chosen
+        # startup page (Settings → General), falling back to the dashboard.
+        from config.user_config import get_config
+        default = str(get_config().get("general", "startup_page") or "dashboard")
+        last = self._state.page(default)
         if last not in self._page_keys and last not in self._coming:
             last = "dashboard"
         self.show_page(last)
@@ -245,6 +251,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._review.refresh()
                 elif key == "insights":
                     self._insights.refresh()
+                elif key == "settings":
+                    self._settings.refresh()
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not refresh page '%s': %s", key, exc)
 

@@ -57,8 +57,7 @@ PAGES: tuple[PageSpec, ...] = (
              planned="Trash — planned. Deletions will be database-only; "
                      "originals are never touched."),
     # System
-    PageSpec("settings", "Settings", "System",
-             planned="Settings — planned configuration module."),
+    PageSpec("settings", "Settings", "System"),
     PageSpec("about", "About", "System"),
 )
 

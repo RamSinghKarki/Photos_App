@@ -52,12 +52,19 @@ MOTION_MS = {
 def reduced_motion() -> bool:
     """True when the user asked to minimize animation (accessibility, PDD §4).
 
-    Honours ``PHOTOSPHERE_REDUCED_MOTION`` (1/true/yes/on). When set, motion
-    durations collapse to 0 so transitions land instantly with no movement.
+    The Settings choice wins; the ``PHOTOSPHERE_REDUCED_MOTION`` environment
+    variable (1/true/yes/on) is the fallback. When set, motion durations
+    collapse to 0 so transitions land instantly with no movement.
     """
-    return os.environ.get("PHOTOSPHERE_REDUCED_MOTION", "").strip().lower() in (
+    if os.environ.get("PHOTOSPHERE_REDUCED_MOTION", "").strip().lower() in (
         "1", "true", "yes", "on",
-    )
+    ):
+        return True
+    try:
+        from config.user_config import get_config
+        return bool(get_config().get("appearance", "reduced_motion"))
+    except Exception:  # noqa: BLE001 - preferences must never break rendering
+        return False
 
 
 def motion_ms(key: str) -> int:

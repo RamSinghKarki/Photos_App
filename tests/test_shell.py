@@ -403,6 +403,35 @@ def test_stylesheet_has_visible_focus(qapp) -> None:
     assert "QPushButton#SearchSuggest:focus" in qss
 
 
+def test_settings_page_edits_persist(qapp, clean_db) -> None:
+    from config.user_config import get_config
+    from viewer.settings_page import SettingsPage
+
+    cfg = get_config()
+    cfg.reset()
+    page = SettingsPage()
+    page.refresh()  # DB health probes must not raise
+
+    # Toggling reduced motion persists and applies live via theme.motion_ms.
+    from viewer import theme
+    page._motion.setChecked(True)
+    assert cfg.get("appearance", "reduced_motion") is True
+    assert theme.motion_ms("fade") == 0
+
+    # Threshold edit exports the env var for the next pipeline run.
+    import os
+    page._threshold.setValue(0.70)
+    assert cfg.get("ai", "face_match_threshold") == 0.70
+    assert os.environ.get("PHOTOSPHERE_FACE_MATCH_THRESHOLD") == "0.7"
+
+    # DB card reflects a reachable database.
+    assert page._db_status.text().startswith("Connected")
+    assert "pgvector" in page._vector_status.text()
+
+    cfg.reset()
+    assert theme.motion_ms("fade") == theme.MOTION_MS["fade"]
+
+
 def test_main_window_has_three_pane_shell(qapp, clean_db) -> None:
     from viewer.main_window import MainWindow
 
