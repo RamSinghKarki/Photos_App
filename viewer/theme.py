@@ -8,18 +8,23 @@ reads as modern native desktop software, not a web page.
 
 from __future__ import annotations
 
-# --- Palette (Fluent dark) -------------------------------------------------
-BACKGROUND = "#17181d"     # app background
-SURFACE = "#20222a"        # cards, bars, panels
-SURFACE_ALT = "#2a2d37"    # hover / elevated
-BORDER = "#31353f"
-PRIMARY = "#4cc2ff"        # Windows 11 accent blue
-PRIMARY_DEEP = "#3a86ff"   # stronger blue for filled buttons
-ACCENT = "#5bd6a0"         # green — active / success
-WARNING = "#f5b445"        # amber
-ERROR = "#ff6b6b"          # red
-TEXT = "#e8eaed"           # primary text
-TEXT_MUTED = "#98a0ad"     # secondary/metadata text
+# --- Palette (PhotoSphere 2.0 dark identity, PDD §4) -----------------------
+# Layered surfaces L0..L3 (window → cards → dialogs → popups); a neutral ramp
+# with a faint cool bias toward the accent, one blue accent, semantic status.
+BACKGROUND = "#1a1c20"     # L0 — app background
+SURFACE = "#22252b"        # L1 — cards, sidebar, bars
+SURFACE_ALT = "#2a2e37"    # L2 — hover / elevated / dialogs
+SURFACE_HI = "#313640"     # L3 — popups / palette / pressed
+BORDER = "#34383f"
+PRIMARY = "#5b9cf5"        # accent blue (hover/lines)
+PRIMARY_DEEP = "#4a8df0"   # filled buttons
+ACCENT_SOFT = "rgba(74, 141, 240, 0.16)"  # accent wash (selection)
+ACCENT = "#4dbb7a"         # green — active / success
+WARNING = "#d9a13b"        # amber
+ERROR = "#e5695f"          # red
+TEXT = "#e8eaee"           # primary text
+TEXT_MUTED = "#9aa1ac"     # secondary / metadata
+TEXT_FAINT = "#6b7280"     # tertiary / hints
 
 RADIUS = 8                 # default corner radius (px)
 
@@ -60,9 +65,44 @@ def build_stylesheet() -> str:
     QFrame#Card, QFrame#Surface {{
         background-color: {SURFACE};
         border: 1px solid {BORDER};
-        border-radius: {RADIUS + 2}px;
+        border-radius: {RADIUS_MD}px;
     }}
     QFrame#Card:hover {{ border-color: {PRIMARY}; }}
+
+    /* Right context inspector (three-pane layout) */
+    QFrame#Inspector {{ background-color: {SURFACE_ALT}; border: none; border-left: 1px solid {BORDER}; }}
+    QLabel#InspectorLabel {{
+        color: {TEXT_FAINT}; font-size: 11px; font-weight: 700;
+        letter-spacing: 1px; padding: 14px 2px 6px 2px;
+    }}
+    QLabel#InspectorEmpty {{ color: {TEXT_FAINT}; }}
+
+    /* Command palette + overlay dialogs */
+    QFrame#Palette {{
+        background-color: {SURFACE_ALT}; border: 1px solid {BORDER};
+        border-radius: {RADIUS_LG}px;
+    }}
+    QLineEdit#PaletteInput {{
+        background: transparent; border: none; border-bottom: 1px solid {BORDER};
+        padding: 16px 18px; font-size: 16px; color: {TEXT};
+    }}
+    QListWidget#PaletteList {{ border: none; background: transparent; padding: 8px; }}
+    QListWidget#PaletteList::item {{ padding: 10px 12px; border-radius: {RADIUS}px; color: {TEXT_MUTED}; }}
+    QListWidget#PaletteList::item:selected {{ background-color: {ACCENT_SOFT}; color: {TEXT}; }}
+
+    /* Notifications */
+    QToolButton#Bell {{ border: none; border-radius: {RADIUS}px; padding: 6px; color: {TEXT_MUTED}; }}
+    QToolButton#Bell:hover {{ background-color: {SURFACE_ALT}; color: {TEXT}; }}
+    QFrame#NotifPanel {{ background-color: {SURFACE_ALT}; border: 1px solid {BORDER}; border-radius: {RADIUS_MD}px; }}
+    QLabel#NotifTitle {{ font-weight: 600; }}
+    QLabel#Toast {{
+        background-color: {SURFACE_HI}; border: 1px solid {BORDER};
+        border-radius: {RADIUS_MD}px; padding: 12px 20px; color: {TEXT};
+    }}
+    QLabel#Pill {{
+        background-color: {ACCENT_SOFT}; color: {PRIMARY};
+        border-radius: 9px; padding: 1px 8px; font-size: 11px; font-weight: 700;
+    }}
 
     /* Top bar */
     QFrame#TopBar {{ background-color: {SURFACE}; border: none; border-bottom: 1px solid {BORDER}; }}
@@ -92,7 +132,7 @@ def build_stylesheet() -> str:
     }}
     QPushButton#NavItem:hover {{ background-color: {SURFACE_ALT}; color: {TEXT}; }}
     QPushButton#NavItem:checked {{
-        background-color: {SURFACE_ALT}; color: {TEXT};
+        background-color: {ACCENT_SOFT}; color: {TEXT};
         border-left: 3px solid {PRIMARY}; padding-left: 11px; font-weight: 600;
     }}
 

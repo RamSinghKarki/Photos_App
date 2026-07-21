@@ -132,7 +132,7 @@ class TopBar(QtWidgets.QFrame):
 
         self.search = QtWidgets.QLineEdit()
         self.search.setObjectName("Search")
-        self.search.setPlaceholderText("Search photos…  (Ctrl+F)")
+        self.search.setPlaceholderText("Search your memories…   (Ctrl+K)")
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self.search_changed.emit)
         self.search.setMaximumWidth(520)
@@ -161,6 +161,11 @@ class TopBar(QtWidgets.QFrame):
         layout.addWidget(self.stop_btn)
         layout.addWidget(self.reindex_btn)
         layout.addWidget(self.import_btn)
+        self._layout = layout
+
+    def add_trailing(self, widget: QtWidgets.QWidget) -> None:
+        """Append a widget (e.g. the notification bell) to the right of the bar."""
+        self._layout.addWidget(widget)
 
     def _on_stop_clicked(self) -> None:
         # Give immediate feedback; the worker stops at the next progress tick.

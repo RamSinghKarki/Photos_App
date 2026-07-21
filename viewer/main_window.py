@@ -17,14 +17,20 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from utils.logging_setup import get_logger
 from utils.perf import timer
 from viewer import data
+from viewer.command_palette import Command, CommandPalette
 from viewer.components import ComingSoonPage, Sidebar, StatusBar, TopBar
 from viewer.gpuinfo import detect_gpu
+from viewer.inspector import Inspector
+from viewer.notifications import NotificationCenter
 from viewer.pages import DashboardPage, GalleryPage, PeoplePage, PersonDetailPage
 from viewer.photo_viewer import PhotoViewer
 from viewer.search_page import SearchPage
 from viewer.state import AppState
 from viewer.tasks import PipelineWorker
 from viewer.timeline_page import TimelinePage
+
+# Inspector context width threshold (PDD §3.2 responsive rule).
+_INSPECTOR_MIN_WIDTH = 1180
 
 logger = get_logger("viewer.main")
 
@@ -105,14 +111,24 @@ class MainWindow(QtWidgets.QMainWindow):
         for key, note in _PLANNED_NOTES.items():
             self._coming[key] = self._stack.addWidget(ComingSoonPage(key.capitalize(), note))
 
-        # --- Layout: sidebar | content ---
+        # --- Three-pane layout: sidebar | content | context inspector ---
+        self._inspector = Inspector()
         content = QtWidgets.QHBoxLayout()
         content.setContentsMargins(0, 0, 0, 0)
         content.setSpacing(0)
         content.addWidget(self._sidebar)
         content.addWidget(self._stack, 1)
+        content.addWidget(self._inspector)
 
         self._status = StatusBar()
+
+        # Notification bell (right of the top bar) + toast/panel host.
+        self._notify = NotificationCenter(self)
+        self._topbar.add_trailing(self._notify.bell)
+
+        # Command palette (Ctrl+K) over the whole window.
+        self._palette = CommandPalette(self)
+        self._palette.set_commands(self._build_commands())
 
         root = QtWidgets.QWidget()
         root_layout = QtWidgets.QVBoxLayout(root)
@@ -166,6 +182,34 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._search.focus_input()
         elif key in self._coming:
             self._stack.setCurrentIndex(self._coming[key])
+        self._update_inspector(key)
+
+    # -- context inspector ---------------------------------------------------
+    def _update_inspector(self, key: str) -> None:
+        """Fill the right pane with context for the current page (PDD §3.1)."""
+        try:
+            stats = data.library_stats()
+        except Exception:  # noqa: BLE001 - DB may be unavailable
+            self._inspector.clear()
+            return
+        p, fa, pe = stats.get("photos", 0), stats.get("faces", 0), stats.get("persons", 0)
+        sections: list[tuple[str, str]] = []
+        if key == "dashboard":
+            sections = [("Library", f"{p:,} photos<br>{pe:,} people<br>{fa:,} faces")]
+        elif key == "photos":
+            sections = [("Photos", f"{p:,} in your library"),
+                        ("Tip", "Right-click a photo for actions, or open it for details.")]
+        elif key == "people":
+            sections = [("People", f"{pe:,} recognized"),
+                        ("Tip", "Name someone once — PhotoSphere remembers them.")]
+        elif key == "timeline":
+            sections = [("Timeline", "Your photos by month, newest first.")]
+        elif key == "search":
+            sections = [("Search", "Type a name, a place, words in a photo, or "
+                                    "just what you remember — PhotoSphere figures out how to find it.")]
+        elif key in _PLANNED_NOTES:
+            sections = [("Coming soon", _PLANNED_NOTES[key])]
+        self._inspector.show_sections(sections)
 
     def _refresh_page(self, key: str) -> None:
         # Defensive: a transient DB issue at launch must not crash the window.
@@ -302,12 +346,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self._topbar.set_idle()
         self.refresh_all()
         self.show_page("photos")
+        self._notify.notify("Import finished", summary)
 
     def _on_pipeline_stopped(self, summary: str) -> None:
         logger.info("Pipeline stopped: %s", summary)
         self._status.set_step(None)
         self._topbar.set_stopped()   # offer Continue
         self.refresh_all()
+        self._notify.toast("Stopped — press Continue to resume")
 
     def _on_pipeline_failed(self, message: str) -> None:
         self._status.set_step(None)
@@ -315,12 +361,40 @@ class MainWindow(QtWidgets.QMainWindow):
         self.refresh_all()
         QtWidgets.QMessageBox.warning(self, "Pipeline error", message)
 
+    # -- command palette -----------------------------------------------------
+    def _build_commands(self) -> list[Command]:
+        """The Ctrl+K command set — navigation plus the top actions."""
+        cmds: list[Command] = [
+            Command("Import folder…", self._on_import, "Ctrl+O", "add photos scan"),
+            Command("Update library (re-index)", self._on_reindex, "Ctrl+R", "reindex refresh"),
+            Command("Search your memories", self._topbar.focus_search, "Ctrl+F", "find"),
+        ]
+        for label, key in (
+            ("Dashboard", "dashboard"), ("Photos", "photos"), ("Timeline", "timeline"),
+            ("People", "people"), ("Search", "search"),
+        ):
+            cmds.append(Command(f"Go to {label}", lambda k=key: self.show_page(k), keywords="open navigate"))
+        return cmds
+
+    def _open_palette(self) -> None:
+        self._palette.open()
+
+    # -- responsive shell ----------------------------------------------------
+    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:  # noqa: N802 (Qt name)
+        super().resizeEvent(event)
+        if not hasattr(self, "_inspector"):
+            return  # a resize can fire mid-construction, before the shell exists
+        # PDD §3.2: collapse the inspector on narrow windows so content breathes.
+        self._inspector.setVisible(self.width() >= _INSPECTOR_MIN_WIDTH)
+        self._notify.reposition_toast()
+
     # -- shortcuts -----------------------------------------------------------
     def _install_shortcuts(self) -> None:
         def add(seq: str, handler) -> None:
             shortcut = QtGui.QShortcut(QtGui.QKeySequence(seq), self)
             shortcut.activated.connect(handler)
 
+        add("Ctrl+K", self._open_palette)
         add("Ctrl+O", self._on_import)
         add("Ctrl+R", self._on_reindex)
         add("Ctrl+F", self._topbar.focus_search)
