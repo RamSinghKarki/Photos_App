@@ -13,6 +13,7 @@ from typing import Callable, Optional
 
 from database import db
 from duplicates.phash import dhash, to_signed
+from utils.imaging import configure_pillow
 from utils.logging_setup import get_logger
 
 logger = get_logger("duplicates.processor")
@@ -31,6 +32,7 @@ def process_phashes(
     batch_size: int = 200,
 ) -> PhashSummary:
     """Hash every un-hashed photo; returns counts."""
+    configure_pillow()
     summary = PhashSummary()
     with db.connection() as conn, conn.cursor() as cur:
         total = db.count_photos_needing_phash(cur)

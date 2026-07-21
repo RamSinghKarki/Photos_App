@@ -65,6 +65,8 @@ def run(argv: list[str] | None = None) -> int:
     """Launch the desktop application and return its exit code."""
     argv = list(sys.argv if argv is None else argv)
     setup_logging()
+    from utils.imaging import configure_pillow
+    configure_pillow()  # let the user's large panoramas/scans decode
     get_settings().ensure_directories()
 
     # Make sure tables exist so a first launch on a fresh database works.

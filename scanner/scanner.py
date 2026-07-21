@@ -26,6 +26,7 @@ from typing import Callable, Iterator, Optional
 from config.settings import get_settings
 from database import db
 from scanner.metadata import extract_metadata
+from utils.imaging import configure_pillow
 from utils.logging_setup import get_logger
 
 # Called periodically with (items_seen, total). total == 0 means indeterminate
@@ -86,6 +87,7 @@ def scan_directory(
     Raises:
         FileNotFoundError: if ``root`` is not an existing directory.
     """
+    configure_pillow()  # allow the user's large panoramas/scans to decode
     root = root.expanduser().resolve()
     if not root.is_dir():
         raise FileNotFoundError(f"Scan root is not a directory: {root}")

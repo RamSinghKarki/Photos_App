@@ -17,6 +17,8 @@ from typing import Callable, Optional
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
+from utils.imaging import configure_pillow
+
 from config.settings import get_settings
 from database import db
 from utils.logging_setup import get_logger
@@ -83,6 +85,7 @@ def generate_thumbnails(
         batch_size: Photos per committed transaction (defaults to configured).
         on_progress: Optional callback invoked with (done, total) as work runs.
     """
+    configure_pillow()
     settings = get_settings()
     settings.ensure_directories()
     effective_batch = batch_size or settings.scan_batch_size

@@ -25,6 +25,8 @@ from typing import Callable, Optional, Sequence
 import numpy as np
 from PIL import Image, UnidentifiedImageError
 
+from utils.imaging import configure_pillow
+
 from config.settings import get_settings
 from database import db
 from faces.detector import DetectedFace, FaceDetector
@@ -87,10 +89,13 @@ def _decode_photo(file_path: str) -> tuple[Image.Image, np.ndarray]:
     """
     try:
         img = Image.open(file_path)
-    except (FileNotFoundError, UnidentifiedImageError, OSError) as exc:
+        with img:
+            rgb_img = img.convert("RGB")   # bomb check also fires on load()
+    except (FileNotFoundError, UnidentifiedImageError, OSError,
+            Image.DecompressionBombError) as exc:
+        # A too-large image above the (raised) pixel cap is skipped like any
+        # unreadable file — one photo must never abort face detection.
         raise UnreadableImageError(str(exc)) from exc
-    with img:
-        rgb_img = img.convert("RGB")
     return rgb_img, np.asarray(rgb_img)
 
 
@@ -143,6 +148,7 @@ def process_faces(
     Returns:
         A :class:`FaceSummary` of the run.
     """
+    configure_pillow()
     settings = get_settings()
     settings.ensure_directories()
     effective_batch = batch_size or settings.scan_batch_size
