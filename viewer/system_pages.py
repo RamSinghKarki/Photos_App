@@ -21,7 +21,7 @@ from typing import Any, Optional
 from PySide6 import QtCore, QtWidgets
 
 from viewer import data, theme
-from viewer.components import _human_bytes
+from viewer.components import _human_bytes, elevate
 from viewer.gpuinfo import detect_gpu
 
 APP_VERSION = "2.0"
@@ -54,6 +54,7 @@ class _StatCard(QtWidgets.QFrame):
         v.addWidget(self._value)
         v.addWidget(self._label)
         v.addWidget(self._detail)
+        elevate(self)
 
     def set(self, value: str, label: str, detail: str = "") -> None:
         self._value.setText(value)
@@ -197,6 +198,7 @@ class AboutPage(QtWidgets.QWidget):
         text.setWordWrap(True)
         v.addWidget(heading)
         v.addWidget(text)
+        elevate(card)
         return card
 
     def refresh(self) -> None:  # static content; nothing to reload

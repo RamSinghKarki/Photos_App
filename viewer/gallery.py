@@ -180,7 +180,8 @@ class PhotoGridModel(QtCore.QAbstractListModel):
             task = _ThumbTask(self._generation, row, thumb_path, self._tile, self._signals)
             self._pool.start(task)
 
-        return _placeholder(self._tile)
+        # No decoration yet — the delegate paints a coloured gradient placeholder.
+        return None
 
     @QtCore.Slot(int, int, object)
     def _on_thumb_loaded(self, generation: int, row: int, image: QtGui.QImage) -> None:
@@ -226,9 +227,22 @@ class PhotoTileDelegate(QtWidgets.QStyledItemDelegate):
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
         painter.setRenderHint(QtGui.QPainter.RenderHint.SmoothPixmapTransform, True)
 
+        path = QtGui.QPainterPath()
+        path.addRoundedRect(QtCore.QRectF(target), theme.RADIUS, theme.RADIUS)
+
+        if pm is None or pm.isNull():
+            # No thumbnail yet: a soft coloured gradient placeholder (keyed to the
+            # item) so the grid reads as alive rather than a wall of grey.
+            seed = hash(index.data(NAME_ROLE) or "") ^ (index.row() * 2654435761)
+            top, bottom = theme.tile_colors(seed)
+            grad = QtGui.QLinearGradient(target.topLeft(), target.bottomRight())
+            grad.setColorAt(0, top)
+            grad.setColorAt(1, bottom)
+            painter.fillPath(path, grad)
+            painter.restore()
+            return
+
         if pm is not None and not pm.isNull():
-            path = QtGui.QPainterPath()
-            path.addRoundedRect(QtCore.QRectF(target), theme.RADIUS, theme.RADIUS)
             painter.setClipPath(path)
             # Fill the tile edge-to-edge, centre-cropping to the square (the
             # gapless Google-Photos look) rather than letterboxing.

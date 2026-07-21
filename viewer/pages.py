@@ -14,6 +14,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from viewer import data
 from viewer.actions import ActionRunner
 from viewer.appearance_strip import AppearanceStrip, SuggestionStrip
+from viewer.components import elevate
 from viewer.gallery import PhotoGrid, PhotoGridModel
 from viewer.merge_strip import MergeSuggestionStrip
 from viewer.people_view import PeopleModel, PeopleView, _circular, _placeholder
@@ -91,7 +92,7 @@ class DashboardPage(QtWidgets.QWidget):
         scroll.setWidget(body)
 
         self._greeting = QtWidgets.QLabel("Welcome back")
-        self._greeting.setStyleSheet("font-size: 30px; font-weight: 700;")
+        self._greeting.setObjectName("Hero")
         self._summary = QtWidgets.QLabel("")
         self._summary.setObjectName("Muted")
         layout.addWidget(self._greeting)
@@ -113,6 +114,7 @@ class DashboardPage(QtWidgets.QWidget):
         rc.addWidget(self._review_title)
         rc.addWidget(self._review_detail)
         rc.addStretch(1)
+        elevate(self._review_card)
         cards.addWidget(self._review_card, 1)
 
         health = QtWidgets.QFrame()
@@ -131,6 +133,7 @@ class DashboardPage(QtWidgets.QWidget):
         for w in (self._health_gpu, self._health_kb, self._health_index):
             hc.addWidget(w)
         hc.addStretch(1)
+        elevate(health)
         cards.addWidget(health, 1)
 
         actions = QtWidgets.QFrame()
@@ -153,6 +156,7 @@ class DashboardPage(QtWidgets.QWidget):
         row.addStretch(1)
         ac.addLayout(row)
         ac.addStretch(1)
+        elevate(actions)
         cards.addWidget(actions, 1)
         layout.addLayout(cards)
 
@@ -237,6 +241,19 @@ class GalleryPage(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
+
+        # Page header (standalone Photos tab only — person pages bring their own).
+        if person_id is None:
+            head = QtWidgets.QVBoxLayout()
+            head.setContentsMargins(24, 20, 24, 8)
+            head.setSpacing(2)
+            title = QtWidgets.QLabel("Photos")
+            title.setObjectName("H1")
+            sub = QtWidgets.QLabel("Newest first · hover for details · click to open")
+            sub.setObjectName("Muted")
+            head.addWidget(title)
+            head.addWidget(sub)
+            layout.addLayout(head)
 
         self._model = PhotoGridModel()
         self._grid = PhotoGrid(self._model)

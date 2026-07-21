@@ -317,6 +317,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self._start_pipeline(folder)
 
     # -- pipeline ------------------------------------------------------------
+    def maybe_onboard(self) -> None:
+        """Show the first-run welcome once; 'Choose a folder' starts an import."""
+        from viewer.onboarding import WelcomeDialog
+
+        WelcomeDialog.maybe_run(self, self._state, self._on_import)
+
     def _on_import(self) -> None:
         directory = QtWidgets.QFileDialog.getExistingDirectory(
             self, "Import Folder", self._state.import_dir()

@@ -65,6 +65,21 @@ def motion_ms(key: str) -> int:
     return 0 if reduced_motion() else MOTION_MS[key]
 
 
+def tile_colors(seed: int):
+    """Two HSL colours for a photo-tile placeholder gradient, keyed by ``seed``.
+
+    Empty/loading tiles get a soft coloured gradient (like the design prototype)
+    instead of flat grey, so grids and strips read as alive before thumbnails
+    decode. The hue is deterministic per seed, so a tile keeps its colour.
+    """
+    from PySide6 import QtGui
+
+    hue = (int(seed) * 47) % 360
+    top = QtGui.QColor.fromHslF(hue / 360.0, 0.30, 0.32)
+    bottom = QtGui.QColor.fromHslF(((hue + 40) % 360) / 360.0, 0.35, 0.20)
+    return top, bottom
+
+
 def build_stylesheet() -> str:
     """Return the global Qt stylesheet (QSS) for the application."""
     return f"""
@@ -74,9 +89,12 @@ def build_stylesheet() -> str:
         outline: none;
     }}
     QWidget {{ background-color: {BACKGROUND}; color: {TEXT}; }}
+    /* Labels ride their parent's surface — never paint their own box. */
+    QLabel {{ background: transparent; }}
 
-    QLabel#H1 {{ font-size: 24px; font-weight: 700; }}
-    QLabel#H2 {{ font-size: 16px; font-weight: 600; }}
+    QLabel#H1 {{ font-size: 27px; font-weight: 600; }}
+    QLabel#H2 {{ font-size: 18px; font-weight: 600; }}
+    QLabel#Hero {{ font-size: 34px; font-weight: 600; }}
     QLabel#Muted {{ color: {TEXT_MUTED}; }}
     QLabel#Mono {{ font-family: "Cascadia Code", "Consolas", "DejaVu Sans Mono", monospace; color: {TEXT}; }}
 
@@ -124,8 +142,16 @@ def build_stylesheet() -> str:
 
     /* Top bar */
     QFrame#TopBar {{ background-color: {SURFACE}; border: none; border-bottom: 1px solid {BORDER}; }}
-    QLabel#Logo {{ font-size: 15px; font-weight: 800; color: {TEXT}; }}
-    QLabel#LogoMark {{ font-size: 18px; font-weight: 800; color: {PRIMARY}; }}
+    QLabel#Logo {{ font-size: 15px; font-weight: 700; color: {TEXT}; }}
+    QLabel#Lens {{
+        border: 3px solid {PRIMARY}; border-radius: 10px;
+        background-color: {ACCENT_SOFT};
+    }}
+    QLabel#Kbd {{
+        color: {TEXT_FAINT}; font-size: 11px; font-weight: 600;
+        border: 1px solid {BORDER}; border-radius: 4px; padding: 1px 5px;
+        background-color: {SURFACE};
+    }}
 
     /* Search box (pill) */
     QLineEdit#Search {{
@@ -178,6 +204,16 @@ def build_stylesheet() -> str:
         height: 6px; text-align: center; color: transparent;
     }}
     QProgressBar::chunk {{ background-color: {PRIMARY}; border-radius: 5px; }}
+
+    /* Filter chips (Review categories) */
+    QPushButton#FilterChip {{
+        background-color: {SURFACE_ALT}; border: 1px solid {BORDER};
+        border-radius: 14px; padding: 5px 14px; color: {TEXT_MUTED}; font-size: 13px;
+    }}
+    QPushButton#FilterChip:hover {{ background-color: {SURFACE_HI}; color: {TEXT}; }}
+    QPushButton#FilterChip:checked {{
+        background-color: {ACCENT_SOFT}; border-color: {PRIMARY}; color: {TEXT};
+    }}
 
     /* Insights stat cards */
     QLabel#StatValue {{ font-size: 30px; font-weight: 800; color: {TEXT}; }}

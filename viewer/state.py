@@ -54,6 +54,13 @@ class AppState:
     def import_dir(self) -> str:
         return str(self._s.value("io/import_dir", "") or "")
 
+    # -- first-run onboarding (shown once) -----------------------------------
+    def onboarded(self) -> bool:
+        return str(self._s.value("app/onboarded", "false")).lower() in ("1", "true")
+
+    def mark_onboarded(self) -> None:
+        self._s.setValue("app/onboarded", True)
+
     def sync(self) -> None:
         """Flush pending writes to disk (called on close)."""
         self._s.sync()

@@ -17,13 +17,14 @@ thread via :class:`~viewer.actions.ActionRunner`; the page refreshes and emits
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from PySide6 import QtCore, QtWidgets
 
 from viewer import data
 from viewer.actions import ActionRunner
 from viewer.appearance_strip import _rounded_square
+from viewer.components import elevate
 
 _THUMB = 60
 
@@ -37,6 +38,7 @@ class _MergeRow(QtWidgets.QFrame):
     def __init__(self, pair: dict[str, Any]) -> None:
         super().__init__()
         self.setObjectName("Card")
+        elevate(self, blur=16, y=3, alpha=55)
         a, b = int(pair["person_a"]), int(pair["person_b"])
         row = QtWidgets.QHBoxLayout(self)
         row.setContentsMargins(12, 10, 12, 10)
@@ -93,6 +95,7 @@ class _FaceRow(QtWidgets.QFrame):
     def __init__(self, sug: dict[str, Any]) -> None:
         super().__init__()
         self.setObjectName("Card")
+        elevate(self, blur=16, y=3, alpha=55)
         face_id, person_id = int(sug["face_id"]), int(sug["person_id"])
         name = sug.get("name") or "this person"
         row = QtWidgets.QHBoxLayout(self)
@@ -154,6 +157,23 @@ class ReviewPage(QtWidgets.QWidget):
         self._subtitle.setObjectName("Muted")
         layout.addWidget(self._subtitle)
 
+        # Filter chips: All / Same person? / Is this…? (counts filled on refresh).
+        chip_row = QtWidgets.QHBoxLayout()
+        chip_row.setSpacing(8)
+        self._chips: dict[str, QtWidgets.QPushButton] = {}
+        for key, label in (("all", "All"), ("merges", "Same person?"), ("faces", "Is this…?")):
+            chip = QtWidgets.QPushButton(label)
+            chip.setObjectName("FilterChip")
+            chip.setCheckable(True)
+            chip.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+            chip.clicked.connect(lambda _=False, k=key: self._set_filter(k))
+            self._chips[key] = chip
+            chip_row.addWidget(chip)
+        chip_row.addStretch(1)
+        layout.addLayout(chip_row)
+        self._filter = "all"
+        self._chips["all"].setChecked(True)
+
         self._empty = QtWidgets.QLabel(
             "✓  All caught up — nothing needs your attention right now."
         )
@@ -173,17 +193,68 @@ class ReviewPage(QtWidgets.QWidget):
         self._scroll.setWidget(self._body)
         layout.addWidget(self._scroll, 1)
 
+        # Keyboard: Y / N answer the first open question (answers teach recognition).
+        self._hint = QtWidgets.QLabel("Keyboard: Y yes · N no — answers teach recognition.")
+        self._hint.setObjectName("Muted")
+        layout.addWidget(self._hint)
+        self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
+
     # -- refresh --------------------------------------------------------------
+
+    def _set_filter(self, key: str) -> None:
+        self._filter = key
+        for k, chip in self._chips.items():
+            chip.setChecked(k == key)
+        self.refresh()
 
     def refresh(self) -> None:
         merges = data.merge_suggestions()
         faces = data.all_suggestions()
+        self._chips["all"].setText(f"All ({len(merges) + len(faces)})")
+        self._chips["merges"].setText(f"Same person? ({len(merges)})")
+        self._chips["faces"].setText(f"Is this…? ({len(faces)})")
+        if self._filter == "merges":
+            faces = []
+        elif self._filter == "faces":
+            merges = []
+        self._first_question: Optional[tuple] = None
+        if merges:
+            p = merges[0]
+            self._first_question = ("merge", p)
+        elif faces:
+            s = faces[0]
+            self._first_question = ("face", s)
         self._rebuild(merges, faces)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        key = event.key()
+        if self._first_question and key in (QtCore.Qt.Key.Key_Y, QtCore.Qt.Key.Key_N):
+            kind, item = self._first_question
+            yes = key == QtCore.Qt.Key.Key_Y
+            if kind == "face":
+                fid, pid = int(item["face_id"]), int(item["person_id"])
+                self._on_confirm_face(fid, pid) if yes else self._on_reject_face(fid, pid)
+            else:
+                a, b = int(item["person_a"]), int(item["person_b"])
+                if yes:
+                    # Same keep-the-named/larger rule the row's Merge button uses.
+                    if item.get("name_a") and not item.get("name_b"):
+                        self._on_merge(b, a)
+                    elif item.get("name_b") and not item.get("name_a"):
+                        self._on_merge(a, b)
+                    else:
+                        s, t = (a, b) if item["count_a"] <= item["count_b"] else (b, a)
+                        self._on_merge(s, t)
+                else:
+                    self._on_reject_pair(a, b)
+            return
+        super().keyPressEvent(event)
 
     def _rebuild(self, merges: list[dict], faces: list[dict]) -> None:
         self._clear_body()
         total = len(merges) + len(faces)
         has_any = total > 0
+        self._hint.setVisible(has_any)
         self._empty.setVisible(not has_any)
         self._scroll.setVisible(has_any)
         self._subtitle.setText(

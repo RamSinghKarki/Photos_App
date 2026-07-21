@@ -34,23 +34,38 @@ class _Task(QtCore.QRunnable):
 
 
 class _Thumb(QtWidgets.QLabel):
-    """One clickable thumbnail; rounded, with a neutral placeholder."""
+    """One clickable thumbnail; rounded, with a coloured gradient placeholder."""
 
     clicked = QtCore.Signal(int)  # photo_id
 
     def __init__(self, photo_id: int) -> None:
         super().__init__()
         self._photo_id = photo_id
+        self._has_image = False
         self.setFixedHeight(_H)
-        self.setMinimumWidth(64)
+        self.setFixedWidth(int(_H * 1.4))  # provisional until the image sizes it
         self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        self.setStyleSheet(
-            f"border-radius: {theme.RADIUS}px; background: {theme.SURFACE};"
-        )
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        if self._has_image:
+            super().paintEvent(event)
+            return
+        # No thumbnail yet: paint a soft coloured gradient (keyed to the photo).
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+        rect = QtCore.QRectF(self.rect())
+        top, bottom = theme.tile_colors(self._photo_id)
+        grad = QtGui.QLinearGradient(rect.topLeft(), rect.bottomRight())
+        grad.setColorAt(0, top)
+        grad.setColorAt(1, bottom)
+        path = QtGui.QPainterPath()
+        path.addRoundedRect(rect, theme.RADIUS, theme.RADIUS)
+        painter.fillPath(path, grad)
 
     def set_image(self, image: QtGui.QImage) -> None:
         if image.isNull():
             return
+        self._has_image = True
         rounded = QtGui.QPixmap(image.size())
         rounded.fill(QtCore.Qt.GlobalColor.transparent)
         painter = QtGui.QPainter(rounded)

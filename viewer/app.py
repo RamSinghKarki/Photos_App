@@ -15,6 +15,7 @@ from database import db
 from utils.logging_setup import get_logger, setup_logging
 from viewer import theme
 from viewer.main_window import MainWindow
+from viewer.onboarding import welcome_qss
 
 logger = get_logger("viewer.app")
 
@@ -29,7 +30,7 @@ def create_application(argv: list[str]) -> QtWidgets.QApplication:
     if app is None:
         app = QtWidgets.QApplication(argv)
     app.setApplicationName("PhotoSphere AI")
-    app.setStyleSheet(theme.build_stylesheet())
+    app.setStyleSheet(theme.build_stylesheet() + welcome_qss())
     return app
 
 
@@ -48,6 +49,7 @@ def run(argv: list[str] | None = None) -> int:
     app = create_application(argv)
     window = MainWindow()
     window.show()
+    window.maybe_onboard()   # first-run welcome (shown once)
     return app.exec()
 
 

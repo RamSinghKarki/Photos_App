@@ -286,6 +286,55 @@ def test_review_center_lists_and_resolves(qapp, clean_db) -> None:
         assert db.count_suggestions(cur) == 0   # the suggestion was consumed
 
 
+def test_review_filter_chips_and_keyboard(qapp, clean_db) -> None:
+    import datetime as _dt
+    import numpy as np
+    from PySide6 import QtCore, QtGui
+    from clustering.clusterer import normalize_embeddings
+    from database import db
+    from viewer.review_page import ReviewPage, _FaceRow, _MergeRow
+
+    def _emb():
+        v = normalize_embeddings(np.random.default_rng().standard_normal((1, 512)).astype("float32"))
+        return v[0].tolist()
+
+    with db.connection() as conn, conn.cursor() as cur:
+        meta = db.PhotoMetadata(file_path="/v/rk.jpg", file_hash="hrk", file_size=1,
+                                file_mtime=_dt.datetime(2020, 1, 1))
+        pid = db.insert_photo(cur, meta)
+        f1 = db.insert_face(cur, pid, (0, 0, 40, 40), _emb(), det_score=0.9)
+        person = db.create_person(cur, 1, f1)
+        db.assign_faces_to_person(cur, person, [f1])
+        db.rename_person(cur, person, "Ram")
+        f2 = db.insert_face(cur, pid, (60, 0, 40, 40), _emb(), det_score=0.9)
+        other = db.create_person(cur, 1, f2)
+        db.assign_faces_to_person(cur, other, [f2])
+        db.replace_merge_suggestions(cur, [(person, other, 0.6)])
+        loose = db.insert_face(cur, pid, (0, 60, 40, 40), _emb(), det_score=0.9)
+        db.record_suggestion(cur, loose, person, 0.5)
+
+    page = ReviewPage()
+    page.refresh()
+    assert page._chips["all"].text() == "All (2)"
+    assert len(page.findChildren(_MergeRow)) == 1 and len(page.findChildren(_FaceRow)) == 1
+
+    # Filtering to faces hides the merge section; first question becomes the face.
+    page._set_filter("faces")
+    assert page.findChildren(_MergeRow) == [] and len(page.findChildren(_FaceRow)) == 1
+    assert page._first_question[0] == "face"
+
+    # Y answers the first open question (confirms the face suggestion).
+    page.keyPressEvent(QtGui.QKeyEvent(
+        QtCore.QEvent.Type.KeyPress, QtCore.Qt.Key.Key_Y,
+        QtCore.Qt.KeyboardModifier.NoModifier))
+    deadline = __import__("time").time() + 5
+    while page._runner.busy() and __import__("time").time() < deadline:
+        qapp.processEvents()
+    qapp.processEvents()
+    with db.connection() as conn, conn.cursor() as cur:
+        assert db.count_suggestions(cur) == 0
+
+
 def test_review_center_empty_state(qapp, clean_db) -> None:
     from viewer.review_page import ReviewPage, _FaceRow, _MergeRow
 

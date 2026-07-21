@@ -10,9 +10,39 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from viewer import icons, theme
+
+
+def elevate(widget: QtWidgets.QWidget, blur: int = 22, y: int = 5, alpha: int = 70) -> None:
+    """Give a card a soft drop shadow so it reads as raised above the surface.
+
+    Qt stylesheets can't express ``box-shadow``; a QGraphicsDropShadowEffect is
+    the native equivalent. One effect per widget (Qt allows only one graphics
+    effect), applied at construction — cheap for the handful of cards per page.
+    """
+    shadow = QtWidgets.QGraphicsDropShadowEffect(widget)
+    shadow.setBlurRadius(blur)
+    shadow.setXOffset(0)
+    shadow.setYOffset(y)
+    shadow.setColor(QtGui.QColor(0, 0, 0, alpha))
+    widget.setGraphicsEffect(shadow)
+
+
+def _magnifier_icon(color: str = theme.TEXT_MUTED, size: int = 16) -> QtGui.QIcon:
+    """A crisp line-art magnifier for the search field's leading edge."""
+    pm = QtGui.QPixmap(size, size)
+    pm.fill(QtCore.Qt.GlobalColor.transparent)
+    p = QtGui.QPainter(pm)
+    p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+    pen = QtGui.QPen(QtGui.QColor(color), 1.6)
+    p.setPen(pen)
+    p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+    p.drawEllipse(2, 2, 8, 8)
+    p.drawLine(10, 10, 14, 14)
+    p.end()
+    return QtGui.QIcon(pm)
 
 
 def _human_bytes(num: float) -> str:
@@ -125,17 +155,23 @@ class TopBar(QtWidgets.QFrame):
         layout.setContentsMargins(16, 8, 16, 8)
         layout.setSpacing(10)
 
-        logo_mark = QtWidgets.QLabel("◆")
-        logo_mark.setObjectName("LogoMark")
+        logo_mark = QtWidgets.QLabel()
+        logo_mark.setObjectName("Lens")          # circular ring drawn via QSS
+        logo_mark.setFixedSize(20, 20)
         logo = QtWidgets.QLabel("PhotoSphere AI")
         logo.setObjectName("Logo")
 
         self.search = QtWidgets.QLineEdit()
         self.search.setObjectName("Search")
-        self.search.setPlaceholderText("Search your memories…   (Ctrl+K)")
-        self.search.setClearButtonEnabled(True)
+        self.search.setPlaceholderText("Search your memories…")
+        self.search.addAction(_magnifier_icon(), QtWidgets.QLineEdit.ActionPosition.LeadingPosition)
         self.search.textChanged.connect(self.search_changed.emit)
         self.search.setMaximumWidth(520)
+        # A non-interactive "Ctrl K" chip pinned to the right, inside the field.
+        self._kbd = QtWidgets.QLabel("Ctrl K", self.search)
+        self._kbd.setObjectName("Kbd")
+        self._kbd.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.search.setTextMargins(0, 0, 52, 0)
 
         self.continue_btn = QtWidgets.QPushButton("Continue")
         self.continue_btn.clicked.connect(self.continue_requested.emit)
@@ -162,6 +198,21 @@ class TopBar(QtWidgets.QFrame):
         layout.addWidget(self.reindex_btn)
         layout.addWidget(self.import_btn)
         self._layout = layout
+
+    def _position_kbd(self) -> None:
+        """Pin the 'Ctrl K' chip to the right edge, inside the search field."""
+        self._kbd.adjustSize()
+        h = self._kbd.sizeHint().height()
+        x = self.search.width() - self._kbd.sizeHint().width() - 8
+        self._kbd.move(max(0, x), (self.search.height() - h) // 2)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._position_kbd()
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        self._position_kbd()
 
     def add_trailing(self, widget: QtWidgets.QWidget) -> None:
         """Append a widget (e.g. the notification bell) to the right of the bar."""

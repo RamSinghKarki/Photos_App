@@ -28,15 +28,22 @@ def qapp():
 
 
 def test_missing_thumbnail_shows_placeholder(qapp) -> None:
-    """A row whose thumbnail file is gone must render a placeholder, not crash."""
-    from viewer.gallery import PhotoGridModel
+    """A row whose thumbnail file is gone must render a placeholder, not crash.
+
+    The model reports "no decoration yet" (None) and the delegate paints a
+    coloured gradient tile in its place — so rendering must succeed with no
+    pixmap ever produced for the row.
+    """
+    from viewer.gallery import PhotoGrid, PhotoGridModel
 
     model = PhotoGridModel()
     rows = [(1, "/lib/a.jpg", "/does/not/exist/thumb.jpg", None)]
     model.set_fetcher(lambda offset, limit: rows[offset:offset + limit])
 
-    pixmap = model.data(model.index(0), QtCore.Qt.ItemDataRole.DecorationRole)
-    assert pixmap is not None and not pixmap.isNull()   # neutral placeholder
+    assert model.data(model.index(0), QtCore.Qt.ItemDataRole.DecorationRole) is None
+    grid = PhotoGrid(model)
+    grid.resize(400, 300)
+    assert not grid.grab().isNull()   # delegate painted the gradient placeholder
 
 
 def test_pipeline_without_ai_models_still_completes(qapp, clean_db, photo_tree: Path) -> None:
