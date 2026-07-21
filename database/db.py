@@ -28,7 +28,10 @@ from utils.logging_setup import get_logger
 
 logger = get_logger("database")
 
-_SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
+# Located via utils.paths so it resolves inside a PyInstaller bundle too.
+from utils.paths import resource_path  # noqa: E402
+
+_SCHEMA_PATH = resource_path("database/schema.sql")
 
 
 # ---------------------------------------------------------------------------

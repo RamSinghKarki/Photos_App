@@ -23,8 +23,7 @@ from PySide6 import QtCore, QtWidgets
 from viewer import data, theme
 from viewer.components import _human_bytes, elevate
 from viewer.gpuinfo import detect_gpu
-
-APP_VERSION = "2.0"
+from utils.version import __version__ as APP_VERSION
 
 
 def _year(value: Any) -> Optional[str]:

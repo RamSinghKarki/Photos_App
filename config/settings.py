@@ -16,8 +16,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
-# The project root is two levels up from this file (config/settings.py).
-PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
+from utils.paths import PROJECT_ROOT, user_data_dir  # noqa: E402
 
 
 def _env_str(name: str, default: str) -> str:
@@ -83,12 +82,16 @@ class Settings:
 
     database: DatabaseSettings = field(default_factory=DatabaseSettings)
 
-    data_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "data")
-    thumbnails_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "data" / "thumbnails")
-    face_crops_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "data" / "face_crops")
-    logs_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "logs")
+    # Generated artifacts live under a writable base: the project directory in
+    # development, a per-user OS location when frozen (see utils.paths). This is
+    # what makes an installed build write to %LOCALAPPDATA% instead of the
+    # read-only Program Files install dir.
+    data_dir: Path = field(default_factory=lambda: user_data_dir() / "data")
+    thumbnails_dir: Path = field(default_factory=lambda: user_data_dir() / "data" / "thumbnails")
+    face_crops_dir: Path = field(default_factory=lambda: user_data_dir() / "data" / "face_crops")
+    logs_dir: Path = field(default_factory=lambda: user_data_dir() / "logs")
     # Regenerable caches (text-embedding cache, etc.) — never authoritative.
-    cache_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "cache")
+    cache_dir: Path = field(default_factory=lambda: user_data_dir() / "cache")
 
     log_level: str = field(default_factory=lambda: _env_str("PHOTOSPHERE_LOG_LEVEL", "INFO"))
     scan_batch_size: int = field(default_factory=lambda: _env_int("PHOTOSPHERE_SCAN_BATCH_SIZE", 200))

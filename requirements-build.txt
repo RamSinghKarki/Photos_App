@@ -1,0 +1,24 @@
+# Build/runtime dependencies for the packaged Windows app (the "lite" tier).
+#
+# Deliberately EXCLUDES the heavy local-AI stack (torch / insightface /
+# onnxruntime / hdbscan / rapidocr): those add multiple GB to the installer and
+# the app degrades gracefully without them — face recognition, semantic search
+# and OCR show a friendly "not installed" state until the user opts in (see
+# docs/PACKAGING.md). Keeping them out yields a small, reliable installer.
+
+# Desktop UI
+PySide6>=6.6
+
+# Database
+psycopg2-binary>=2.9
+pgvector>=0.2
+
+# Imaging / metadata / math
+Pillow>=10.0
+numpy>=1.24
+
+# Clustering (DBSCAN path only; hdbscan is an optional AI extra)
+scikit-learn>=1.3
+
+# Packaging toolchain
+pyinstaller>=6.3
