@@ -248,8 +248,17 @@ class SettingsPage(QtWidgets.QScrollArea):
                             "(also runs automatically after every import).")
         optimize.clicked.connect(self._on_optimize)
         form.addRow("Indexes", optimize)
+
+        reset = QtWidgets.QPushButton("Reset library (start over)…")
+        reset.setToolTip("Remove all indexed photos, people and learning so you "
+                        "can train from zero. Your original photo files are not "
+                        "touched.")
+        reset.clicked.connect(self._on_reset_library)
+        form.addRow("Start over", reset)
+
         self._advanced_note = QtWidgets.QLabel("")
         self._advanced_note.setObjectName("Muted")
+        self._advanced_note.setWordWrap(True)
         form.addRow("", self._advanced_note)
 
     # -- live data -------------------------------------------------------------
@@ -279,6 +288,31 @@ class SettingsPage(QtWidgets.QScrollArea):
             self._advanced_note.setText("Indexes rebuilt.")
         except Exception as exc:  # noqa: BLE001
             self._advanced_note.setText(f"Could not rebuild: {exc}")
+
+    def _on_reset_library(self) -> None:
+        """Wipe all indexed data + caches after a typed confirmation."""
+        from database import db
+        with db.connection() as conn, conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM photos")
+            n = int(cur.fetchone()[0])
+
+        text, ok = QtWidgets.QInputDialog.getText(
+            self, "Reset library",
+            f"This permanently removes all {n:,} indexed photos and every person, "
+            "name, correction, album and search index.\n\nYour original photo "
+            "files are NOT affected — you can re-import them.\n\nType 'reset' to "
+            "confirm:")
+        if not ok or text.strip().lower() != "reset":
+            self._advanced_note.setText("Reset cancelled.")
+            return
+        try:
+            from reset_library import reset_library
+            report = reset_library(clear_caches=True)
+            self._advanced_note.setText(
+                f"Library reset — removed {report.photos_before:,} photos and "
+                "cleared caches. Import your photos to train from zero.")
+        except Exception as exc:  # noqa: BLE001
+            self._advanced_note.setText(f"Reset failed: {exc}")
 
     def _on_reset(self) -> None:
         if QtWidgets.QMessageBox.question(

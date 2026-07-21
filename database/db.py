@@ -1143,6 +1143,30 @@ def optimize_after_import(cur: PgCursor) -> None:
         cur.execute(statement)
 
 
+#: Every table that holds indexed/learned data — the whole library state. The
+#: order is irrelevant because TRUNCATE ... CASCADE clears dependants together.
+_LIBRARY_TABLES = (
+    "photos", "faces", "persons", "person_embeddings",
+    "recognition_feedback", "recognition_suggestions",
+    "person_merge_suggestions", "person_merge_rejections",
+    "clip_embeddings", "albums", "album_photos",
+    "duplicate_dismissals", "scan_runs",
+)
+
+
+def reset_library(cur: PgCursor) -> None:
+    """Wipe ALL indexed and learned data, keeping the schema (a clean slate).
+
+    Empties every library table so the next import re-processes from zero. This
+    is database-only: the user's original photo files are never read, moved, or
+    deleted here — the caller clears generated caches (thumbnails, face crops)
+    separately. Irreversible; guard it behind an explicit confirmation.
+    """
+    cur.execute(
+        "TRUNCATE {} RESTART IDENTITY CASCADE".format(", ".join(_LIBRARY_TABLES))
+    )
+
+
 def clear_persons(cur: PgCursor) -> None:
     """Remove every person row, detaching their faces.
 
