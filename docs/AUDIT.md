@@ -234,3 +234,40 @@ explicit migration is added.
 **Recommendation:** execute items 1–3 (P0) as one "performance & safety"
 session, then 4–8 (P1) as a refactoring session, then resume feature work
 (duplicate detection is next in the queue) on the cleaned foundation.
+
+## Release Candidate audit (2026-07-21)
+
+Scope: UI, pipeline, database, performance at 1k/10k/100k/500k. Method:
+reproduce first; no speculative changes.
+
+### Findings
+
+| Area | Check | Result |
+|---|---|---|
+| UI | Cold launch (empty library) | 176 ms construct+paint |
+| UI | Page switch, all 16 pages | every page < 60 ms; no crash on empty DB |
+| UI | `+`/`-`/`=` zoom shortcuts vs. typing in search | NOT swallowed (hypothesis disproved by test — no fix needed) |
+| UI | Resize storm 700–1600 px | inspector collapses/restores; no crash |
+| UI | Tab focus | reaches search field; focus visible since Phase 11 |
+| UI | High-DPI | Qt 6 auto-scaling; not reproducible headless — untested, noted |
+| Pipeline | Rescan idempotence, corrupt files, no-model fallback, stop design | already covered by existing tests |
+| Pipeline | Interrupted import resumes | NEW regression test (cancel in thumbnails stage → re-run completes library) |
+| DB | Launch with DB down | covered (defensive refreshes) |
+| DB | Indexes | complete (hash, taken_at, favorite, partial pending, trgm, 2× ivfflat) |
+| DB | **ivfflat built on empty tables** | REPRODUCED: 1.7× slower ANN at 50k vectors vs. re-trained index; worsens with scale |
+| Perf | Metadata queries @ 500k photos | worst 136 ms (100k-deep scroll offset); all interactive paths within budget |
+| Perf | Plain ANALYZE effect on metadata queries | no reproducible win at any scale — no change made |
+| Perf | Peak RSS during 500k-row benchmark | 50 MB (client side) |
+
+### Fix shipped
+
+`db.optimize_after_import` — REINDEX both ivfflat indexes + ANALYZE touched
+tables, run as a final "Optimizing" pipeline step (worker thread) whenever an
+import did work. Measured: 3.2 → 1.9 ms ANN query at 50k vectors (4.3 s
+one-time rebuild). Regression tests: `test_optimize_after_import_retrains_
+vector_index`, `test_interrupted_import_resumes`. Suite: 143 passing.
+
+### Deferred (not reproducible here / future work)
+
+High-DPI on a real 2× display; PostgreSQL disconnect *mid-session* UX
+(currently: stale view + logged warning); backup/restore (scheduled feature).

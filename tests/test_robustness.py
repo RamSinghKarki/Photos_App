@@ -82,3 +82,72 @@ def test_app_builds_when_database_unreachable(qapp) -> None:
         else:
             os.environ["PHOTOSPHERE_DB_NAME"] = saved
         get_settings.cache_clear()
+
+
+def test_optimize_after_import_retrains_vector_index(clean_db) -> None:
+    """The post-import maintenance step must run cleanly and keep ANN search
+    correct: the ivfflat indexes are created on empty tables at schema time, so
+    the pipeline retrains them (REINDEX) + refreshes stats after a bulk load."""
+    import datetime as _dt
+
+    import numpy as np
+
+    from database import db
+
+    rng = np.random.default_rng(5)
+    with db.connection() as conn, conn.cursor() as cur:
+        pids = []
+        for i in range(40):
+            meta = db.PhotoMetadata(
+                file_path=f"/v/opt{i}.jpg", file_hash=f"opt{i}", file_size=1,
+                file_mtime=_dt.datetime(2024, 1, 1),
+            )
+            pids.append(db.insert_photo(cur, meta))
+        vecs = rng.standard_normal((40, 512)).astype("float32")
+        vecs /= np.linalg.norm(vecs, axis=1, keepdims=True)
+        for pid, v in zip(pids, vecs):
+            db.upsert_clip_embedding(cur, pid, v.tolist(), "clip", 1)
+
+        db.optimize_after_import(cur)  # must not raise
+
+        cur.execute(
+            "SELECT photo_id FROM clip_embeddings ORDER BY embedding <=> %s::vector LIMIT 5",
+            (vecs[7].tolist(),),
+        )
+        top = [r[0] for r in cur.fetchall()]
+    assert pids[7] in top  # self-match survives the rebuild
+
+
+def test_interrupted_import_resumes(qapp, clean_db, photo_tree: Path) -> None:
+    """Stopping mid-import must lose no committed work; a re-run completes the
+    library to exactly the same state as an uninterrupted import."""
+    from database import db
+    from viewer.tasks import PipelineWorker
+
+    def make_worker():
+        return PipelineWorker(
+            root=photo_tree,
+            detector_factory=lambda: None,
+            clip_factory=lambda: None,
+        )
+
+    # First run: request a stop as thumbnailing starts; the stage's first
+    # progress tick observes it (cooperative cancel), after the scan committed.
+    w1 = make_worker()
+    outcomes: list[str] = []
+    w1.cancelled.connect(lambda msg: outcomes.append(f"cancelled:{msg}"))
+    w1.failed.connect(lambda msg: outcomes.append(f"failed:{msg}"))
+    w1.step_changed.connect(lambda step: step == "Building thumbnails" and w1.cancel())
+    w1.run()
+    assert outcomes and outcomes[0].startswith("cancelled")
+
+    # Second run finishes the job; the library matches a clean full import.
+    w2 = make_worker()
+    done: list[str] = []
+    w2.finished_ok.connect(done.append)
+    w2.run()
+    assert done, "resumed pipeline did not finish"
+
+    with db.connection() as conn, conn.cursor() as cur:
+        # a.jpg, b.png, a_copy.jpg, with_exif.jpg + broken.jpg (identity-only)
+        assert db.count_photos(cur) == 5

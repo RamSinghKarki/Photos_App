@@ -924,6 +924,24 @@ def fetch_rejections(cur: PgCursor) -> dict[int, set[int]]:
     return rejections
 
 
+def optimize_after_import(cur: PgCursor) -> None:
+    """Post-import maintenance: retrain vector indexes and refresh planner stats.
+
+    The ivfflat indexes are created at schema time on empty tables, so their
+    centroid lists are trained on nothing — after a bulk import, queries degrade
+    toward a scan (measured 1.7x slower at 50k vectors, worsening with scale).
+    REINDEX rebuilds them over the real data; ANALYZE refreshes row estimates.
+    Runs once at the end of the import pipeline, on the worker thread.
+    """
+    for statement in (
+        "REINDEX INDEX idx_faces_embedding",
+        "REINDEX INDEX idx_clip_embedding",
+        "ANALYZE photos", "ANALYZE faces",
+        "ANALYZE clip_embeddings", "ANALYZE person_embeddings",
+    ):
+        cur.execute(statement)
+
+
 def clear_persons(cur: PgCursor) -> None:
     """Remove every person row, detaching their faces.
 

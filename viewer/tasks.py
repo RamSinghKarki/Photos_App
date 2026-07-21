@@ -19,6 +19,7 @@ from typing import Callable, Optional
 from PySide6 import QtCore
 
 from clustering.incremental import update_people
+from database import db
 from faces.detector import FaceDetector
 from faces.processor import process_faces
 from pipeline.manager import default_manager
@@ -108,6 +109,11 @@ class PipelineWorker(QtCore.QThread):
                 on_step=self.step_changed.emit,
                 on_progress=self._on_progress,
             ))
+
+            if parts:  # something was imported/enriched: retrain indexes + stats
+                self.step_changed.emit("Optimizing")
+                with db.connection() as conn, conn.cursor() as cur:
+                    db.optimize_after_import(cur)
 
             self.step_changed.emit("Done")
             self.finished_ok.emit("  ·  ".join(parts) if parts else "Nothing to do")
