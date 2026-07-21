@@ -194,6 +194,44 @@ def test_timeline_empty_state(qapp, clean_db) -> None:
     assert page._grid.isHidden()        # grid hidden with nothing to show
 
 
+def test_search_idle_suggestions_and_why_chips(qapp) -> None:
+    from types import SimpleNamespace
+
+    from viewer.search_page import _SUGGESTIONS, SearchPage
+
+    page = SearchPage()
+
+    # Idle: suggestion chips shown, grid hidden, no evidence chips.
+    assert page._suggest.isVisibleTo(page)
+    assert page._grid.isHidden()
+    chips = [b for b in page.findChildren(__import__("PySide6").QtWidgets.QPushButton)
+             if b.objectName() == "SearchSuggest"]
+    assert len(chips) == len(_SUGGESTIONS)
+    assert page._input.placeholderText() == "Search your memories…"
+
+    # "Why matched" aggregation from a result set.
+    res = [
+        SimpleNamespace(matched_person="Ram", similarity=0.4, matched_text=False),
+        SimpleNamespace(matched_person=None, similarity=0.2, matched_text=True),
+    ]
+    assert page._why_chips(res) == ["☺ Ram", "Visual match", "Text in photo"]
+    assert page._why_chips([SimpleNamespace(matched_person=None, similarity=0.0,
+                                            matched_text=False)]) == []
+
+    # show_rows (Find Similar path) swaps to the results state and clears why.
+    page._add_why("stale")
+    page.show_rows([(1, "/a.jpg", None, None)], "3 similar photos")
+    assert not page._suggest.isVisibleTo(page)
+    assert not page._grid.isHidden()
+    assert page._why.count() == 0                    # evidence cleared
+    assert page._status.text() == "3 similar photos"
+
+    # Clearing the box and submitting returns to the idle suggestions.
+    page._input.clear()
+    page._run()
+    assert page._suggest.isVisibleTo(page)
+
+
 def test_main_window_has_three_pane_shell(qapp, clean_db) -> None:
     from viewer.main_window import MainWindow
 

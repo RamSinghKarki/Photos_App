@@ -35,6 +35,8 @@ class SearchResult:
     score: float                 # blended final score
     similarity: float = 0.0      # raw CLIP similarity
     is_favorite: bool = False
+    matched_person: Optional[str] = None   # a known person named in the query
+    matched_text: bool = False             # the query matched text in the photo
 
     def as_grid_row(self) -> tuple[int, str, Optional[str], Any]:
         """Adapt to the (id, path, thumbnail, taken_at) row the gallery expects."""
@@ -91,11 +93,13 @@ class SearchEngine:
 
         with timer("search.vector_query"), db.connection() as conn, conn.cursor() as cur:
             # Combine face signal: if a query word names a known person, restrict.
+            matched_person: Optional[str] = None
             if filters.get("person_id") is None:
                 for token in text.split():
                     pid = db.find_person_id_by_exact_name(cur, token)
                     if pid is not None:
                         filters["person_id"] = pid
+                        matched_person = token
                         break
             fav = bool(filters.get("favorite", False))
             since, until, person_id = filters.get("since"), filters.get("until"), filters.get("person_id")
@@ -123,12 +127,15 @@ class SearchEngine:
         rows = [(pid, *vals) for pid, vals in merged.items()]
         ranked = self._rank(
             rows, settings.search_favorite_boost, settings.search_recency_boost,
-            settings.search_ocr_boost,
+            settings.search_ocr_boost, matched_person,
         )
         return ranked[:limit]
 
     @staticmethod
-    def _rank(rows, favorite_boost: float, recency_boost: float, ocr_boost: float) -> list[SearchResult]:
+    def _rank(
+        rows, favorite_boost: float, recency_boost: float, ocr_boost: float,
+        matched_person: Optional[str] = None,
+    ) -> list[SearchResult]:
         """Blend CLIP similarity with OCR, favorite and recency into a score."""
         # Recency normalized across the candidate pool (newest -> 1.0).
         times = [r[3].timestamp() for r in rows if r[3] is not None]
@@ -148,6 +155,7 @@ class SearchEngine:
                 SearchResult(
                     photo_id=photo_id, file_path=path, thumbnail_path=thumb,
                     taken_at=taken_at, score=score, similarity=sim, is_favorite=is_fav,
+                    matched_person=matched_person, matched_text=ocr_hit,
                 )
             )
         results.sort(key=lambda r: r.score, reverse=True)

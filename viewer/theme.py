@@ -158,6 +158,19 @@ def build_stylesheet() -> str:
     }}
     QProgressBar::chunk {{ background-color: {PRIMARY}; border-radius: 5px; }}
 
+    /* Search: suggestion chips (idle state) + "why matched" evidence chips */
+    QPushButton#SearchSuggest {{
+        background-color: {SURFACE_ALT}; border: 1px solid {BORDER};
+        border-radius: 16px; padding: 9px 16px; color: {TEXT}; font-size: 13px;
+    }}
+    QPushButton#SearchSuggest:hover {{ border-color: {PRIMARY}; background-color: {SURFACE_HI}; }}
+    QLabel#SearchHint {{ color: {TEXT_MUTED}; font-size: 15px; }}
+    QLabel#SearchHintSmall {{ color: {TEXT_FAINT}; font-size: 12px; }}
+    QLabel#WhyChip {{
+        background-color: {ACCENT_SOFT}; color: {PRIMARY};
+        border-radius: 10px; padding: 3px 10px; font-size: 12px; font-weight: 600;
+    }}
+
     /* Timeline scrubber rail (Year → month, replaces the old tree) */
     QScrollArea#TimelineRail {{ background-color: {SURFACE}; border: none; border-right: 1px solid {BORDER}; }}
     QScrollArea#TimelineRail > QWidget > QWidget {{ background-color: {SURFACE}; }}
