@@ -11,6 +11,8 @@ need Advanced: it holds diagnostics only.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6 import QtCore, QtWidgets
 
 from config.settings import get_settings
@@ -49,6 +51,7 @@ class SettingsPage(QtWidgets.QScrollArea):
         self._build_ai()
         self._build_performance()
         self._build_storage()
+        self._build_backup()
         self._build_database()
         self._build_advanced()
 
@@ -172,6 +175,61 @@ class SettingsPage(QtWidgets.QScrollArea):
             row.setObjectName("Muted")
             row.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
             form.addRow(label, row)
+
+    def _build_backup(self) -> None:
+        form = self._card("Backup")
+        form.addRow("", self._note(
+            "Saves everything you've taught PhotoSphere — names, corrections, "
+            "favorites — to one file. Your photos are never touched."))
+        row = QtWidgets.QHBoxLayout()
+        back = QtWidgets.QPushButton("Back up knowledge…")
+        back.clicked.connect(self._on_backup)
+        restore = QtWidgets.QPushButton("Restore from backup…")
+        restore.clicked.connect(self._on_restore)
+        row.addWidget(back)
+        row.addWidget(restore)
+        row.addStretch(1)
+        form.addRow("Knowledge", row)
+        self._backup_note = QtWidgets.QLabel("")
+        self._backup_note.setObjectName("Muted")
+        self._backup_note.setWordWrap(True)
+        form.addRow("", self._backup_note)
+
+    def _on_backup(self) -> None:
+        from backup.knowledge import save_backup
+        from database import db
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Back up knowledge", "photosphere-knowledge.json", "Backup (*.json)")
+        if not path:
+            return
+        try:
+            with db.connection() as conn, conn.cursor() as cur:
+                data = save_backup(cur, Path(path))
+            self._backup_note.setText(
+                f"Backed up {len(data['people'])} people, "
+                f"{len(data['favorites'])} favorites, "
+                f"{len(data['feedback'])} corrections.")
+        except Exception as exc:  # noqa: BLE001
+            self._backup_note.setText(f"Backup failed: {exc}")
+
+    def _on_restore(self) -> None:
+        from backup.knowledge import load_backup, restore_knowledge
+        from database import db
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Restore knowledge", "", "Backup (*.json)")
+        if not path:
+            return
+        try:
+            data = load_backup(Path(path))  # validated before anything is written
+            with db.connection() as conn, conn.cursor() as cur:
+                report = restore_knowledge(cur, data)
+            self._backup_note.setText(
+                f"Restored: {report['faces_assigned']} faces across people, "
+                f"{report['favorites']} favorites, {report['feedback']} corrections "
+                f"({report['faces_skipped'] + report['favorites_skipped'] + report['feedback_skipped']} "
+                "entries had no matching photo and were skipped).")
+        except Exception as exc:  # noqa: BLE001
+            self._backup_note.setText(f"Restore failed: {exc}")
 
     def _build_database(self) -> None:
         form = self._card("Database")
