@@ -153,6 +153,44 @@ def duplicate_review_count() -> int:
         return len(find_duplicate_groups(cur, limit=10_000))
 
 
+# -- albums -----------------------------------------------------------------
+def albums() -> list[dict[str, Any]]:
+    """All albums with photo counts and covers (for the Albums page)."""
+    with timer("query.albums"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_albums(cur)
+
+
+def create_album(name: str) -> int:
+    with db.connection() as conn, conn.cursor() as cur:
+        return db.create_album(cur, name)
+
+
+def rename_album(album_id: int, name: str) -> None:
+    with db.connection() as conn, conn.cursor() as cur:
+        db.rename_album(cur, album_id, name)
+
+
+def delete_album(album_id: int) -> None:
+    with db.connection() as conn, conn.cursor() as cur:
+        db.delete_album(cur, album_id)
+
+
+def add_to_album(album_id: int, photo_ids: list[int]) -> int:
+    with db.connection() as conn, conn.cursor() as cur:
+        return db.add_photos_to_album(cur, album_id, photo_ids)
+
+
+def remove_from_album(album_id: int, photo_ids: list[int]) -> None:
+    with db.connection() as conn, conn.cursor() as cur:
+        db.remove_photos_from_album(cur, album_id, photo_ids)
+
+
+def album_photos(album_id: int, limit: int, offset: int = 0) -> list[tuple]:
+    """A page of an album's photos, newest addition first."""
+    with db.connection() as conn, conn.cursor() as cur:
+        return db.list_album_photos(cur, album_id, limit, offset)
+
+
 def review_count() -> int:
     """Everything awaiting the user in Review: face + merge questions."""
     with db.connection() as conn, conn.cursor() as cur:

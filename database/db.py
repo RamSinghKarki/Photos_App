@@ -1034,6 +1034,94 @@ def count_hidden_duplicates(cur: PgCursor) -> int:
     return int(cur.fetchone()[0])
 
 
+# ---------------------------------------------------------------------------
+# Albums (manual, user-curated organization)
+# ---------------------------------------------------------------------------
+def create_album(cur: PgCursor, name: str) -> int:
+    cur.execute("INSERT INTO albums (name) VALUES (%s) RETURNING id", (name,))
+    return int(cur.fetchone()[0])
+
+
+def rename_album(cur: PgCursor, album_id: int, name: str) -> None:
+    cur.execute(
+        "UPDATE albums SET name = %s, updated_at = now() WHERE id = %s",
+        (name, int(album_id)),
+    )
+
+
+def delete_album(cur: PgCursor, album_id: int) -> None:
+    """Delete an album (its membership rows cascade; photos are untouched)."""
+    cur.execute("DELETE FROM albums WHERE id = %s", (int(album_id),))
+
+
+def add_photos_to_album(cur: PgCursor, album_id: int, photo_ids: Sequence[int]) -> int:
+    """Add photos to an album (idempotent); set a cover if none. Returns added."""
+    ids = [int(p) for p in photo_ids]
+    if not ids:
+        return 0
+    from psycopg2.extras import execute_values
+
+    execute_values(
+        cur,
+        "INSERT INTO album_photos (album_id, photo_id) VALUES %s "
+        "ON CONFLICT DO NOTHING",
+        [(int(album_id), pid) for pid in ids],
+    )
+    added = cur.rowcount
+    cur.execute(
+        "UPDATE albums SET cover_photo_id = %s, updated_at = now() "
+        "WHERE id = %s AND cover_photo_id IS NULL",
+        (ids[0], int(album_id)),
+    )
+    return added
+
+
+def remove_photos_from_album(cur: PgCursor, album_id: int, photo_ids: Sequence[int]) -> None:
+    cur.execute(
+        "DELETE FROM album_photos WHERE album_id = %s AND photo_id = ANY(%s)",
+        (int(album_id), [int(p) for p in photo_ids]),
+    )
+
+
+def list_albums(cur: PgCursor) -> list[dict[str, Any]]:
+    """Albums with photo count and a cover thumbnail, newest activity first."""
+    cur.execute(
+        """
+        SELECT a.id, a.name, count(ap.photo_id) AS n, cov.thumbnail_path
+          FROM albums a
+          LEFT JOIN album_photos ap ON ap.album_id = a.id
+          LEFT JOIN photos cov ON cov.id = a.cover_photo_id
+         GROUP BY a.id, a.name, cov.thumbnail_path
+         ORDER BY a.updated_at DESC, a.id DESC
+        """
+    )
+    return [
+        {"id": int(r[0]), "name": r[1], "count": int(r[2]), "cover_path": r[3]}
+        for r in cur.fetchall()
+    ]
+
+
+def count_albums(cur: PgCursor) -> int:
+    cur.execute("SELECT count(*) FROM albums")
+    return int(cur.fetchone()[0])
+
+
+def list_album_photos(cur: PgCursor, album_id: int, limit: int, offset: int = 0
+                      ) -> list[tuple[int, str, Optional[str], Any]]:
+    """A page of an album's photos (most recently added first)."""
+    cur.execute(
+        """
+        SELECT p.id, p.file_path, p.thumbnail_path, p.taken_at
+          FROM album_photos ap JOIN photos p ON p.id = ap.photo_id
+         WHERE ap.album_id = %s
+         ORDER BY ap.added_at DESC, p.id DESC
+         LIMIT %s OFFSET %s
+        """,
+        (int(album_id), limit, offset),
+    )
+    return [(int(r[0]), r[1], r[2], r[3]) for r in cur.fetchall()]
+
+
 def optimize_after_import(cur: PgCursor) -> None:
     """Post-import maintenance: retrain vector indexes and refresh planner stats.
 

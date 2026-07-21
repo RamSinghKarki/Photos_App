@@ -85,6 +85,11 @@ class MainWindow(QtWidgets.QMainWindow):
         from viewer.duplicates_page import DuplicatesPage
         self._duplicates = DuplicatesPage()
         self._duplicates.changed.connect(self.refresh_all)
+        from viewer.albums_page import AlbumsPage
+        self._albums = AlbumsPage()
+        self._albums.photo_activated.connect(
+            lambda pid: self._open_viewer(self._albums.current_photo_ids(), pid))
+        self._gallery.add_to_album_requested.connect(self._on_add_to_album)
 
         self._search.photo_activated.connect(
             lambda pid: self._open_viewer(self._search.current_photo_ids(), pid)
@@ -126,6 +131,7 @@ class MainWindow(QtWidgets.QMainWindow):
             ("about", self._about),
             ("settings", self._settings),
             ("duplicates", self._duplicates),
+            ("albums", self._albums),
         ):
             self._page_keys[key] = self._stack.addWidget(widget)
         self._detail_index = self._stack.addWidget(self._person_detail)
@@ -259,6 +265,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._settings.refresh()
                 elif key == "duplicates":
                     self._duplicates.refresh()
+                elif key == "albums":
+                    self._albums.refresh()
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not refresh page '%s': %s", key, exc)
 
@@ -329,6 +337,28 @@ class MainWindow(QtWidgets.QMainWindow):
         folder = dirs[0]
         self._state.save_import_dir(str(folder))
         self._start_pipeline(folder)
+
+    def _on_add_to_album(self, photo_ids: list) -> None:
+        """Add the selected photos to an existing album or a newly-named one."""
+        if not photo_ids:
+            return
+        albums = data.albums()
+        choices = [a["name"] for a in albums] + ["＋ New album…"]
+        choice, ok = QtWidgets.QInputDialog.getItem(
+            self, "Add to album", f"Add {len(photo_ids)} photo(s) to:",
+            choices, 0, False)
+        if not ok:
+            return
+        if choice == "＋ New album…":
+            name, ok = QtWidgets.QInputDialog.getText(self, "New album", "Album name:")
+            if not (ok and name.strip()):
+                return
+            album_id = data.create_album(name.strip())
+        else:
+            album_id = albums[choices.index(choice)]["id"]
+        added = data.add_to_album(album_id, list(photo_ids))
+        self._notify.notify("Added to album", f"{added} photo(s) added.")
+        self._albums.refresh()
 
     # -- pipeline ------------------------------------------------------------
     def maybe_onboard(self) -> None:

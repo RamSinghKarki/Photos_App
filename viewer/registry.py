@@ -48,8 +48,7 @@ PAGES: tuple[PageSpec, ...] = (
              planned="Similar Photos — planned AI module."),
     # Organization
     PageSpec("duplicates", "Duplicates", "Organization"),
-    PageSpec("albums", "Albums", "Organization",
-             planned="Albums — planned organization module."),
+    PageSpec("albums", "Albums", "Organization"),
     PageSpec("favorites", "Favorites", "Organization",
              planned="Favorites — planned organization module."),
     PageSpec("archive", "Archive", "Organization",

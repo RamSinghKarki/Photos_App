@@ -153,6 +153,23 @@ CREATE TABLE IF NOT EXISTS duplicate_dismissals (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- User-curated albums (manual organization, complementing automatic AI groups).
+-- Photos are referenced, never copied; deleting an album never touches photos.
+CREATE TABLE IF NOT EXISTS albums (
+    id             SERIAL PRIMARY KEY,
+    name           TEXT NOT NULL,
+    cover_photo_id BIGINT REFERENCES photos(id) ON DELETE SET NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS album_photos (
+    album_id  INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+    photo_id  BIGINT  NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+    added_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (album_id, photo_id)
+);
+CREATE INDEX IF NOT EXISTS idx_album_photos_album ON album_photos (album_id);
+
 -- ---------------------------------------------------------------------------
 -- person_embeddings: a person's *representative gallery* — a diverse, quality-
 -- gated set of face embeddings, not a single average. Recognizing a person

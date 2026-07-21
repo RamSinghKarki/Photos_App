@@ -299,14 +299,15 @@ class PhotoGrid(QtWidgets.QListView):
     detect_faces_requested = QtCore.Signal(list)  # selected photo ids
     find_similar_requested = QtCore.Signal(int)   # one photo id
     remove_from_person_requested = QtCore.Signal(list)  # selected photo ids
+    add_to_album_requested = QtCore.Signal(list)         # selected photo ids
 
     def __init__(self, model: PhotoGridModel) -> None:
         super().__init__()
         self.setObjectName("PhotoGrid")
         self.setModel(model)
         self._model = model
-        self._has_person_context = False       # True on a person-detail page
-        self._person_name = ""                 # that person's display name
+        self._has_person_context = False       # a removable collection is active
+        self._remove_label = ""                # label for the remove action
 
         self._delegate = PhotoTileDelegate(self)
         self.setItemDelegate(self._delegate)
@@ -356,8 +357,17 @@ class PhotoGrid(QtWidgets.QListView):
         Pass a name (``""`` for an unnamed person) to enable it; ``None`` on
         other pages hides it.
         """
-        self._has_person_context = name is not None
-        self._person_name = name or ""
+        who = (name or "this person") if name is not None else None
+        self.set_remove_action(f"Not {who} (remove from person)" if who else None)
+
+    def set_remove_action(self, label: Optional[str]) -> None:
+        """Show a 'remove selected' context action with ``label`` (None hides it).
+
+        The action emits :attr:`remove_from_person_requested` — reused for any
+        collection the selection can be removed from (a person, an album, …).
+        """
+        self._has_person_context = label is not None
+        self._remove_label = label or ""
 
     def selected_photo_ids(self) -> list[int]:
         """Return the photo ids of the currently selected tiles."""
@@ -377,11 +387,12 @@ class PhotoGrid(QtWidgets.QListView):
                 similar.triggered.connect(lambda: self.find_similar_requested.emit(ids[0]))
             action = menu.addAction(f"Detect faces on {len(ids)} selected photo(s)")
             action.triggered.connect(lambda: self.detect_faces_requested.emit(ids))
+            add_album = menu.addAction(f"Add {len(ids)} photo(s) to album…")
+            add_album.triggered.connect(lambda: self.add_to_album_requested.emit(ids))
             if self._has_person_context:
-                who = self._person_name or "this person"
                 menu.addSeparator()
-                not_person = menu.addAction(f"Not {who} (remove from person)")
-                not_person.triggered.connect(
+                remove = menu.addAction(self._remove_label)
+                remove.triggered.connect(
                     lambda: self.remove_from_person_requested.emit(ids)
                 )
         else:
