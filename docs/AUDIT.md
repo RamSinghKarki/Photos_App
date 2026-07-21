@@ -271,3 +271,22 @@ vector_index`, `test_interrupted_import_resumes`. Suite: 143 passing.
 
 High-DPI on a real 2× display; PostgreSQL disconnect *mid-session* UX
 (currently: stale view + logged warning); backup/restore (scheduled feature).
+
+## Duplicates module (2026-07-21)
+
+Visual duplicate detection, review-only (never auto-deletes).
+
+* **Fingerprint**: dHash (64-bit) computed by PhashPlugin after thumbnails —
+  pure Pillow, CPU, resumable. `photos.phash` (BIGINT; -1 = unhashable).
+* **Grouping**: `duplicates.finder.group_hashes` — banding (8×8-bit chunks) to
+  generate candidate pairs + union-find. Banding is exact for the default
+  threshold (Hamming ≤ 5; provably exact for ≤ 7) and avoids the O(n²) scan.
+* **Resolution**: Keep-one flags the others `photos.duplicate_of` (hidden from
+  the grid via a WHERE clause, never deleted, restorable). "Not duplicates"
+  records a `duplicate_dismissals` row keyed by sorted ids so the set never
+  reappears.
+* **Test-isolation fix found in passing**: `clean_db` used TRUNCATE … RESTART
+  IDENTITY (reusing photo ids) but left `duplicate_dismissals`, so a dismissal
+  keyed "1-2" wrongly hid a later test's group. Fixture now truncates it too.
+
+Suite: 162 passing.

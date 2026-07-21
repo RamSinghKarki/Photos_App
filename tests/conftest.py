@@ -107,4 +107,8 @@ def clean_db():
 
     with db.connection() as conn, conn.cursor() as cur:
         cur.execute("TRUNCATE faces, photos, scan_runs RESTART IDENTITY CASCADE")
+        # Reset id-keyed side tables too: TRUNCATE ... RESTART IDENTITY reuses
+        # photo ids, so a stale dismissal keyed by "1-2" would wrongly hide a
+        # freshly-seeded group in a later test.
+        cur.execute("TRUNCATE duplicate_dismissals")
     yield

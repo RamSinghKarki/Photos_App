@@ -112,6 +112,47 @@ def on_this_day(limit: int = 12) -> list[tuple]:
         return db.list_on_this_day(cur, today.month, today.day, limit)
 
 
+# -- duplicates -------------------------------------------------------------
+def duplicate_groups(limit: int = 50) -> list[dict[str, Any]]:
+    """Pending visual-duplicate groups (biggest first) for review."""
+    from duplicates.finder import find_duplicate_groups
+
+    with timer("query.duplicate_groups"), db.connection() as conn, conn.cursor() as cur:
+        return find_duplicate_groups(cur, limit=limit)
+
+
+def keep_duplicate(keep_id: int, member_ids: list[int]) -> None:
+    """Resolve a group: keep one photo, hide the rest (never deleted)."""
+    with db.connection() as conn, conn.cursor() as cur:
+        db.mark_duplicates(cur, keep_id, member_ids)
+
+
+def dismiss_duplicate_group(member_ids: list[int]) -> None:
+    """Remember 'these are different photos' — never ask about this set again."""
+    with db.connection() as conn, conn.cursor() as cur:
+        db.record_duplicate_dismissal(cur, member_ids)
+
+
+def restore_duplicate(photo_id: int) -> None:
+    """Bring a hidden duplicate back into the library view."""
+    with db.connection() as conn, conn.cursor() as cur:
+        db.restore_duplicate(cur, photo_id)
+
+
+def hidden_duplicates(limit: int = 200) -> list[tuple]:
+    """Photos currently hidden by a Keep verdict (restorable)."""
+    with db.connection() as conn, conn.cursor() as cur:
+        return db.list_hidden_duplicates(cur, limit)
+
+
+def duplicate_review_count() -> int:
+    """Number of pending duplicate groups awaiting a decision."""
+    from duplicates.finder import find_duplicate_groups
+
+    with db.connection() as conn, conn.cursor() as cur:
+        return len(find_duplicate_groups(cur, limit=10_000))
+
+
 def review_count() -> int:
     """Everything awaiting the user in Review: face + merge questions."""
     with db.connection() as conn, conn.cursor() as cur:

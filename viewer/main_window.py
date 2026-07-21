@@ -82,6 +82,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._about = AboutPage()
         from viewer.settings_page import SettingsPage
         self._settings = SettingsPage()
+        from viewer.duplicates_page import DuplicatesPage
+        self._duplicates = DuplicatesPage()
+        self._duplicates.changed.connect(self.refresh_all)
 
         self._search.photo_activated.connect(
             lambda pid: self._open_viewer(self._search.current_photo_ids(), pid)
@@ -122,6 +125,7 @@ class MainWindow(QtWidgets.QMainWindow):
             ("insights", self._insights),
             ("about", self._about),
             ("settings", self._settings),
+            ("duplicates", self._duplicates),
         ):
             self._page_keys[key] = self._stack.addWidget(widget)
         self._detail_index = self._stack.addWidget(self._person_detail)
@@ -253,6 +257,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._insights.refresh()
                 elif key == "settings":
                     self._settings.refresh()
+                elif key == "duplicates":
+                    self._duplicates.refresh()
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not refresh page '%s': %s", key, exc)
 

@@ -240,6 +240,13 @@ class Settings:
         default_factory=lambda: float(_env_str("PHOTOSPHERE_SEARCH_OCR_BOOST", "0.35"))
     )
 
+    # --- Duplicates ----------------------------------------------------------
+    # Maximum Hamming distance (of 64 dHash bits) for "visually the same".
+    # 0 = identical fingerprints only; 5 tolerates re-encodes and resizes.
+    phash_max_distance: int = field(
+        default_factory=lambda: _env_int("PHOTOSPHERE_PHASH_MAX_DISTANCE", 5)
+    )
+
     # --- OCR ----------------------------------------------------------------
     # RapidOCR language(s); comma-separated. Default English.
     ocr_languages: str = field(default_factory=lambda: _env_str("PHOTOSPHERE_OCR_LANGUAGES", "en"))

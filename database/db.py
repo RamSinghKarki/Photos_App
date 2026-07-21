@@ -956,6 +956,84 @@ def set_phashes(cur: PgCursor, rows: Sequence[tuple[int, Optional[int]]]) -> Non
     )
 
 
+def list_phashes(cur: PgCursor) -> list[tuple[int, int]]:
+    """(photo_id, signed phash) for every hashed, visible, hashable photo."""
+    cur.execute(
+        "SELECT id, phash FROM photos "
+        "WHERE phash IS NOT NULL AND phash <> -1 AND duplicate_of IS NULL"
+    )
+    return [(int(r[0]), int(r[1])) for r in cur.fetchall()]
+
+
+def list_photos_brief_by_ids(cur: PgCursor, photo_ids: Sequence[int]
+                             ) -> list[tuple[int, str, Optional[str], Any, int]]:
+    """(id, file_path, thumbnail_path, taken_at, file_size) for given ids."""
+    if not photo_ids:
+        return []
+    cur.execute(
+        "SELECT id, file_path, thumbnail_path, taken_at, file_size "
+        "FROM photos WHERE id = ANY(%s) ORDER BY file_size DESC, id",
+        (list(photo_ids),),
+    )
+    return [(int(r[0]), r[1], r[2], r[3], int(r[4])) for r in cur.fetchall()]
+
+
+def duplicate_group_key(photo_ids: Sequence[int]) -> str:
+    """Stable identity for a set of photos (sorted ids)."""
+    return "-".join(str(i) for i in sorted(int(i) for i in photo_ids))
+
+
+def fetch_duplicate_dismissals(cur: PgCursor) -> set[str]:
+    cur.execute("SELECT group_key FROM duplicate_dismissals")
+    return {r[0] for r in cur.fetchall()}
+
+
+def record_duplicate_dismissal(cur: PgCursor, photo_ids: Sequence[int]) -> None:
+    """Remember 'these are different photos' — the set is never asked again."""
+    cur.execute(
+        "INSERT INTO duplicate_dismissals (group_key) VALUES (%s) "
+        "ON CONFLICT (group_key) DO NOTHING",
+        (duplicate_group_key(photo_ids),),
+    )
+
+
+def mark_duplicates(cur: PgCursor, keep_id: int, hide_ids: Sequence[int]) -> None:
+    """Record a Keep verdict: the others point at the kept photo (hidden, not
+    deleted). Also dismisses the group so it never reappears in review."""
+    ids = [int(i) for i in hide_ids if int(i) != int(keep_id)]
+    if ids:
+        cur.execute(
+            "UPDATE photos SET duplicate_of = %s, updated_at = now() "
+            "WHERE id = ANY(%s)",
+            (int(keep_id), ids),
+        )
+    record_duplicate_dismissal(cur, [int(keep_id), *ids])
+
+
+def restore_duplicate(cur: PgCursor, photo_id: int) -> None:
+    """Bring a hidden duplicate back into the library view."""
+    cur.execute(
+        "UPDATE photos SET duplicate_of = NULL, updated_at = now() WHERE id = %s",
+        (int(photo_id),),
+    )
+
+
+def list_hidden_duplicates(cur: PgCursor, limit: int = 200
+                           ) -> list[tuple[int, str, Optional[str], Any, int]]:
+    """Photos hidden by a Keep verdict, with the keeper's id last."""
+    cur.execute(
+        "SELECT id, file_path, thumbnail_path, taken_at, duplicate_of "
+        "FROM photos WHERE duplicate_of IS NOT NULL ORDER BY updated_at DESC LIMIT %s",
+        (limit,),
+    )
+    return [(int(r[0]), r[1], r[2], r[3], int(r[4])) for r in cur.fetchall()]
+
+
+def count_hidden_duplicates(cur: PgCursor) -> int:
+    cur.execute("SELECT count(*) FROM photos WHERE duplicate_of IS NOT NULL")
+    return int(cur.fetchone()[0])
+
+
 def optimize_after_import(cur: PgCursor) -> None:
     """Post-import maintenance: retrain vector indexes and refresh planner stats.
 
@@ -1203,7 +1281,9 @@ def list_photo_grid(
     (photos containing one of their faces) or filtered by a free-text term that
     matches the file path or camera model.
     """
-    clauses: list[str] = []
+    # Photos hidden by a duplicate Keep verdict stay out of the browsing grid
+    # (they remain in the database and are restorable from Duplicates).
+    clauses: list[str] = ["p.duplicate_of IS NULL"]
     params: list[Any] = []
     joins = ""
 

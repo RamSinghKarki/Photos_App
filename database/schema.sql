@@ -139,6 +139,20 @@ ALTER TABLE persons ADD COLUMN IF NOT EXISTS adaptive_threshold REAL;
 ALTER TABLE photos ADD COLUMN IF NOT EXISTS phash BIGINT;
 CREATE INDEX IF NOT EXISTS idx_photos_phash ON photos (phash) WHERE phash IS NOT NULL;
 
+-- Duplicate review outcomes. A photo the user chose NOT to keep points at the
+-- photo kept in its place — hidden from the Photos grid, never deleted, and
+-- restorable at any time from the Duplicates page. ON DELETE SET NULL keeps
+-- hidden photos visible again if their keeper is ever removed.
+ALTER TABLE photos ADD COLUMN IF NOT EXISTS duplicate_of BIGINT REFERENCES photos(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_photos_duplicate_of ON photos (duplicate_of) WHERE duplicate_of IS NOT NULL;
+
+-- Groups the user reviewed and said "these are different photos" — keyed by
+-- the sorted member ids so the same set is never asked about again.
+CREATE TABLE IF NOT EXISTS duplicate_dismissals (
+    group_key   TEXT PRIMARY KEY,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- ---------------------------------------------------------------------------
 -- person_embeddings: a person's *representative gallery* — a diverse, quality-
 -- gated set of face embeddings, not a single average. Recognizing a person
