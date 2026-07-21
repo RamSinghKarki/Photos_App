@@ -1,13 +1,16 @@
 # PhotoSphere AI 2.0 — Product Design Document
 
-**Status: APPROVED WITH REVISIONS — FROZEN (rev 1).** Qt Widgets confirmed for
-2.0 (no QML migration). Rev 1 incorporates the review feedback: three-pane
-layout, search-first workflow, activity dashboard, immersive viewer workspace,
-rich people profiles, categorized AI Review, command palette, notification
-center, visual-hierarchy levels, empty states, full design system, future
-reservations, responsive rules, micro-interactions, visual identity, and a
-Phase 0 UX prototype. Amendments from here are edits to this file, reviewed
-the same way.
+**Status: APPROVED — FROZEN (rev 2).** Qt Widgets confirmed for 2.0 (no QML
+migration). Rev 1 added: three-pane layout, search-first workflow, activity
+dashboard, immersive viewer workspace, rich people profiles, categorized AI
+Review, command palette, notification center, visual-hierarchy levels, empty
+states, full design system, future reservations, responsive rules,
+micro-interactions, visual identity, Phase 0 UX prototype. **Rev 2 (product
+review) added:** guided onboarding, the Insights ("what PhotoSphere knows")
+page, an About/trust page, the user-facing vocabulary table, liveness
+behaviors, the delight catalogue, and Phase 0 validation criteria (30-second
+first-use test + two-click audit). Design is frozen; Phase 1 implementation
+proceeds. Amendments from here are edits to this file, reviewed the same way.
 
 This is the design contract for the 2.0 experience: what we build, why each
 piece exists, and the order it lands in. It supersedes screen-by-screen tweaks;
@@ -42,6 +45,39 @@ fully offline, privacy-first.
 | 4 | **Invisible AI** | Vocabulary: "People", not "Face Recognition". "Search your memories…", not "Semantic search". "Same person?", not "Cluster merge". Confidence numbers only in Review, never in browsing surfaces. |
 | 5 | **One question per screen** | Dashboard: *what's happening?* Photos: *everything.* People: *who?* Timeline: *when?* Albums: *how organized?* Review: *what does the app need from me?* |
 | 6 | **Trust through control** | Every automatic decision is inspectable and reversible (already true in the engine: rejections, merge feedback, appearances). The UI's job is to surface it calmly. |
+
+### 2.1 Vocabulary (binding, user-facing)
+
+Research language never reaches the user. Technical detail lives only in
+Insights → Diagnostics and in the docs.
+
+| Never show | Say instead |
+|---|---|
+| Face recognition / clustering / HDBSCAN | **People** |
+| Semantic search / CLIP / embeddings | **Search your memories…** |
+| OCR | **Text in photos** |
+| Confidence score (outside Review) | *(nothing — evidence lives in Review only)* |
+| Merge clusters | **Same person?** |
+| Re-index / pipeline | **Update library** |
+| Model / inference / GPU CUDA EP | **AI (on this device)** / **Accelerated** |
+
+### 2.2 Liveness (the app works while you watch)
+
+Premium software never feels static. Required behaviors: greeting follows the
+clock; "On this day" rotates daily; the Review badge updates live as the
+pipeline finds questions; indexing progress ticks in place; GPU/status pulses
+subtly while processing; recent searches accumulate automatically; "Recently
+added" fills during import. All driven by existing signals — no polling loops
+on the UI thread.
+
+### 2.3 Delight catalogue (the "wow" moments)
+
+Budgeted, not scattered — each is one orchestrated moment: first launch opens a
+**guided welcome**, never an empty app (§6.10); the first import becomes a live
+"building your library" experience (progress + filling grid); a person newly
+recognized confirms with a subtle toast + card shimmer; hovering a person card
+peeks their recent photos; opening a photo zooms from its thumbnail (220 ms).
+Nothing exceeds the motion caps; all honor reduced-motion.
 
 ## 3. Information Architecture
 
@@ -87,9 +123,10 @@ Navigation reorganizes around workflows, not modules:
 │  Favorites           │   Maps, Duplicates, Plugins.
 ├ AI ──────────────────┤
 │  Review  (badge: N)  │   ← consolidates ALL pending questions:
-├ SYSTEM ──────────────┤     Same person? · Is this <name>? · Unknown faces ·
-│  Settings            │     (later) duplicates, low-confidence matches.
-│  About               │
+│  Insights            │     Same person? · Is this <name>? · Unknown faces ·
+├ SYSTEM ──────────────┤     (later) duplicates, low-confidence matches.
+│  Settings            │   Insights = "what PhotoSphere knows" (§6.9).
+│  About               │   About = the trust page (§6.10).
 └──────────────────────┘
 ```
 
@@ -305,9 +342,42 @@ appear.
 
 ### 6.8 Settings
 
-Grouped panes (Library folders · Appearance · AI & performance · Shortcuts ·
-About) reading/writing the existing env-backed settings; worker counts and
-thresholds live under "AI & performance" with plain-language labels.
+Grouped panes (Library folders · Appearance · AI & performance · Shortcuts)
+reading/writing the existing env-backed settings; worker counts and thresholds
+live under "AI & performance" with plain-language labels. Diagnostics (model
+names, CUDA provider, thresholds' raw values) live here — the only place
+technical vocabulary is allowed.
+
+### 6.9 Insights — "what PhotoSphere knows"
+
+The AI made visible — reinforcing that the app builds *knowledge*, not files:
+
+```
+┌ Insights ────────────────────────────────────────┐
+│ Your library, understood                          │
+│  ☺ 438 people      ⌖ 72 places     ⊞ 8,120 photos│
+│  ¶ text in 3,204   ♥ 512 favs      ？16 unknown  │
+│  ✓ 7 awaiting review        ⚡ Accelerated (GPU) │
+│  Knowledge base: healthy · learning from you:     │
+│  212 corrections remembered · 31 people named     │
+└──────────────────────────────────────────────────┘
+```
+
+Counts come from existing queries (library stats, feedback counts, suggestion
+counts). A quiet "Diagnostics" link at the bottom exposes the technical view.
+
+### 6.10 Onboarding & About
+
+**First launch is a guided welcome, never an empty app:**
+Welcome → choose folder → live "building your library" (scan → thumbnails →
+finding people → making it searchable, with the grid filling behind) → Ready.
+Each step is the real pipeline with friendly stage names; skippable; replayable
+from About.
+
+**About is the trust page**, in plain language: *Everything stays on your
+computer · No cloud, no accounts, no telemetry · Your corrections teach it ·
+Accelerated by your GPU · Works completely offline.* One screen that sells the
+product's difference.
 
 ## 7. User Flows
 
@@ -354,7 +424,7 @@ option behind the same Python backend if 3.0 demands richer motion.
 
 | Phase | Scope | Builds on |
 |---|---|---|
-| 0 | **UX prototype**: clickable mockup of the full journey (three-pane shell, dashboard, photos, viewer workspace, person profile, review queue, palette, notifications) — walked through and approved *before* Qt code; issues are cheapest here | `docs/prototype.html` |
+| 0 | **UX prototype**: clickable mockup of the full journey (three-pane shell, dashboard, photos, viewer workspace, person profile, review queue, palette, notifications, insights, onboarding, about) — walked through and approved *before* Qt code. **Validation criteria:** a first-time user completes import / find a person / search "passport" / merge two people / open the viewer / find Review in 30 s unaided; every core task audited at ≤ 2 clicks; zero technical vocabulary visible outside Settings/Diagnostics | `docs/prototype.html` — ✅ approved |
 | 1 | **Design system**: tokens, elevation, type ramp, component kit + skeletons, motion utilities | audit item 7 (page registry) folds in here |
 | 2 | **Navigation**: registry-driven sidebar w/ badge, top bar, Ctrl+K palette | |
 | 3 | **Dashboard** (activity model) | |

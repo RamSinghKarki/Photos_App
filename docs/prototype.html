@@ -186,17 +186,19 @@
     <h6>AI</h6>
     <div class="nav">
       <button data-go="review"><span class="ico">✓</span> Review <span class="badge">7</span></button>
+      <button data-go="insights"><span class="ico">◉</span> Insights</button>
     </div>
     <h6>System</h6>
     <div class="nav">
       <button data-go="settings"><span class="ico">⚙</span> Settings</button>
+      <button data-go="about"><span class="ico">ℹ</span> About</button>
     </div>
   </nav>
 
   <main class="content" id="content">
 
     <section class="view on" data-view="dash">
-      <div class="hero">Good evening</div>
+      <div class="hero" id="greet">Good evening</div>
       <p class="sub">102,451 photos · 438 people · 12 albums</p>
       <div class="cards" style="margin-top:24px">
         <div class="card" style="cursor:pointer" onclick="go('review')">
@@ -206,9 +208,9 @@
         </div>
         <div class="card">
           <h2 style="margin:0 0 8px">Library health</h2>
-          <p class="status"><i class="ok"></i> GPU · CUDA active</p>
-          <p class="status"><i class="ok"></i> Database · 2.1 GB</p>
-          <p class="status"><i class="busy"></i> Indexing · 98% (1,921 left)</p>
+          <p class="status"><i class="ok"></i> AI · Accelerated on your GPU</p>
+          <p class="status"><i class="ok"></i> Knowledge base · Healthy</p>
+          <p class="status"><i class="busy"></i> <span id="indexing">Updating library · 98%</span></p>
         </div>
         <div class="card">
           <h2 style="margin:0 0 8px">Quick actions</h2>
@@ -333,6 +335,36 @@
       <p class="sub" style="margin-top:16px">Keyboard: Y yes · N no · ↓ next — answers teach recognition.</p>
     </section>
 
+    <section class="view" data-view="insights">
+      <h1>Your library, understood</h1>
+      <p class="sub">PhotoSphere builds knowledge about your photos — all of it on this computer.</p>
+      <div class="cards" style="margin-top:24px; grid-template-columns:repeat(auto-fill,minmax(200px,1fr))">
+        <div class="card"><div class="hero" style="font-size:28px">438</div><p class="sub">☺ People recognized</p></div>
+        <div class="card"><div class="hero" style="font-size:28px">72</div><p class="sub">⌖ Places seen</p></div>
+        <div class="card"><div class="hero" style="font-size:28px">102,451</div><p class="sub">▦ Photos indexed</p></div>
+        <div class="card"><div class="hero" style="font-size:28px">3,204</div><p class="sub">¶ Photos with text</p></div>
+        <div class="card"><div class="hero" style="font-size:28px">512</div><p class="sub">♥ Favorites</p></div>
+        <div class="card" style="cursor:pointer" onclick="go('review')"><div class="hero" style="font-size:28px">7</div><p class="sub">✓ Awaiting your review</p></div>
+        <div class="card"><div class="hero" style="font-size:28px">16</div><p class="sub">？ Unknown faces</p></div>
+        <div class="card"><div class="hero" style="font-size:28px">212</div><p class="sub">✎ Corrections remembered</p></div>
+      </div>
+      <h2>Learning from you</h2>
+      <p class="sub">31 people named · 212 corrections remembered · recognition improves with every answer.</p>
+      <p class="note">Diagnostics (models, GPU details, thresholds) →</p>
+    </section>
+
+    <section class="view" data-view="about">
+      <h1><span class="lens" style="display:inline-block; vertical-align:-3px"></span> PhotoSphere AI</h1>
+      <p class="sub">Your photos, understood — privately.</p>
+      <div class="cards" style="margin-top:24px; max-width:720px; grid-template-columns:1fr">
+        <div class="card"><b>Everything stays on your computer.</b><p class="sub">No cloud. No accounts. No telemetry. Ever.</p></div>
+        <div class="card"><b>It learns from you.</b><p class="sub">Every name and correction makes recognition and search better — and is remembered.</p></div>
+        <div class="card"><b>Fast, because it's yours.</b><p class="sub">Accelerated by your own GPU. Search 100,000 photos in a blink, fully offline.</p></div>
+        <div class="card"><b>Your originals are sacred.</b><p class="sub">Photos are never moved, renamed, edited or deleted.</p></div>
+      </div>
+      <p style="margin-top:16px"><button class="btn" onclick="showWelcome()">Replay welcome</button></p>
+    </section>
+
     <section class="view" data-view="settings">
       <h1>Settings</h1>
       <div class="cards" style="margin-top:16px; max-width:720px; grid-template-columns:1fr">
@@ -359,10 +391,24 @@
   <header>Notifications</header>
   <div><b>Import finished</b>1,204 photos added · 2 min ago</div>
   <div><b>3 duplicate people found</b>Review when ready · 5 min ago</div>
-  <div><b>Search index updated</b>OCR complete on 214 photos · 1 h ago</div>
-  <div><b>GPU switched to CUDA</b>RTX 5060 active · today</div>
+  <div><b>Search got smarter</b>Text found in 214 more photos · 1 h ago</div>
+  <div><b>AI accelerated</b>Now using your RTX 5060 · today</div>
 </div>
 <div class="toast" id="toast"></div>
+
+<div class="overlay on" id="welcome">
+  <div class="palette" style="margin-top:18vh; text-align:center; padding:40px 32px">
+    <span class="lens" style="display:inline-block; width:40px; height:40px; margin-bottom:16px"></span>
+    <h1 id="wTitle" style="font-size:28px">Welcome to PhotoSphere</h1>
+    <p class="sub" id="wBody" style="margin:12px auto 24px; max-width:38ch">Your photos, understood — privately.
+      Everything happens on this computer. Nothing is ever uploaded.</p>
+    <div style="display:flex; gap:8px; justify-content:center">
+      <button class="btn primary" id="wNext" onclick="welcomeNext()">Choose a folder</button>
+      <button class="btn" onclick="closeWelcome()">Skip</button>
+    </div>
+    <p class="sub" id="wStep" style="margin-top:20px; font-size:12px"></p>
+  </div>
+</div>
 
 <script>
   const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
@@ -391,7 +437,9 @@
     timeline:'<h5>Jump to</h5><p class="sub">2026 · 2025 · 2024 · 2021 · 2019</p>',
     albums:'<h5>Albums</h5><p class="sub">Smart albums are saved searches — they stay current automatically.</p>',
     favs:'<h5>Favorites</h5><p class="sub">♥ feeds search ranking.</p>',
-    settings:'<h5>About</h5><p class="sub">PhotoSphere AI 2.0 · fully offline · your photos never leave this machine.</p>'
+    insights:'<h5>Knowledge base</h5><div class="kv"><span>Status</span><b>Healthy</b><span>Size</span><b>2.1 GB</b><span>Last learned</span><b>2 min ago</b></div>',
+    about:'<h5>Version</h5><div class="kv"><span>PhotoSphere</span><b>2.0</b><span>Mode</span><b>Fully offline</b></div>',
+    settings:'<h5>Diagnostics</h5><p class="sub">Technical detail lives here — nowhere else.</p>'
   };
   function go(v){
     $$(".view").forEach(x=>x.classList.toggle("on", x.dataset.view===v));
@@ -426,10 +474,41 @@
   let toastT; function toast(m){ const t=$("#toast"); t.textContent=m; t.classList.add("on");
     clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("on"), 2600); }
 
+  /* liveness: greeting follows the clock; indexing ticks to done */
+  const h=new Date().getHours();
+  $("#greet").textContent = h<12 ? "Good morning" : h<18 ? "Good afternoon" : "Good evening";
+  let pct=98; const tick=setInterval(()=>{
+    pct++; const el=$("#indexing"); if(!el) return;
+    if(pct>=100){ el.textContent="Library up to date"; el.parentElement.querySelector("i").className="ok"; clearInterval(tick); }
+    else el.textContent="Updating library · "+pct+"%";
+  }, 2500);
+
+  /* guided welcome (first launch; replayable from About) */
+  const WSTEPS=[
+    ["Building your library","Scanning 1,204 photos — thumbnails appear as they're made.","Continue"],
+    ["Finding people","Faces are being noticed and grouped. You'll name them once — PhotoSphere remembers.","Continue"],
+    ["Making it searchable","Soon you can type “beach sunset” or “passport” and just… find it.","Continue"],
+    ["Ready","Your library is alive. Start with the Dashboard — or press Ctrl+K and search.","Get started"],
+  ];
+  let wi=-1;
+  function welcomeNext(){
+    wi++;
+    if(wi>=WSTEPS.length){ closeWelcome(); return; }
+    const [t,b,btn]=WSTEPS[wi];
+    $("#wTitle").textContent=t; $("#wBody").textContent=b; $("#wNext").textContent=btn;
+    $("#wStep").textContent="Step "+(wi+1)+" of "+WSTEPS.length;
+  }
+  function showWelcome(){ wi=-1; $("#wTitle").textContent="Welcome to PhotoSphere";
+    $("#wBody").textContent="Your photos, understood — privately. Everything happens on this computer. Nothing is ever uploaded.";
+    $("#wNext").textContent="Choose a folder"; $("#wStep").textContent="";
+    $("#welcome").classList.add("on"); }
+  function closeWelcome(){ $("#welcome").classList.remove("on"); toast("Welcome anytime — About → Replay welcome"); }
+
   /* keyboard */
   addEventListener("keydown", e=>{
     if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="k"){ e.preventDefault(); openPalette(); }
     else if(e.key==="Escape"){ closePalette(); $("#notif").classList.remove("on");
+      $("#welcome").classList.remove("on");
       if($('[data-view="viewer"]').classList.contains("on")) go("photos"); }
   });
 </script>
