@@ -49,6 +49,18 @@ def photo_people(photo_id: int) -> list[dict[str, Any]]:
         return db.list_photo_people(cur, photo_id)
 
 
+def person_profile(person_id: int) -> dict[str, Any]:
+    """First/last seen, photo count and cover for a person's profile header."""
+    with timer("query.person_profile"), db.connection() as conn, conn.cursor() as cur:
+        return db.person_profile_stats(cur, person_id)
+
+
+def appears_with(person_id: int, limit: int = 8) -> list[dict[str, Any]]:
+    """People who share photos with this person (the 'appears with' row)."""
+    with timer("query.appears_with"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_appears_with(cur, person_id, limit)
+
+
 def photos_brief(photo_ids: list[int]) -> list[tuple]:
     """Thumbnail rows for a set of ids in order (viewer filmstrip)."""
     with timer("query.photos_brief"), db.connection() as conn, conn.cursor() as cur:

@@ -249,6 +249,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._person_detail.show_person(person_id, name)
             self._sidebar.select("people")
             self._stack.setCurrentIndex(self._detail_index)
+            self._update_inspector("people")
 
     def _open_viewer(self, photo_ids: list[int], photo_id: int) -> None:
         if not photo_ids:

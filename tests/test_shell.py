@@ -120,6 +120,43 @@ def test_gallery_tile_delegate_and_roles(qapp, clean_db, photo_tree) -> None:
     assert grid._delegate._hover_row == 2
 
 
+def test_person_profile_header(qapp, clean_db) -> None:
+    import datetime as _dt
+    import numpy as np
+    from clustering.clusterer import normalize_embeddings
+    from database import db
+    from viewer.pages import PersonDetailPage
+
+    def _emb():
+        v = normalize_embeddings(np.random.default_rng().standard_normal((1, 512)).astype("float32"))
+        return v[0].tolist()
+
+    with db.connection() as conn, conn.cursor() as cur:
+        ram = db.create_person(cur, 0, None)
+        hari = db.create_person(cur, 0, None)
+        db.rename_person(cur, ram, "Ram")
+        db.rename_person(cur, hari, "Hari")
+        for i in range(4):
+            meta = db.PhotoMetadata(
+                file_path=f"/v/pp{i}.jpg", file_hash=f"h{i}", file_size=1,
+                file_mtime=_dt.datetime(2020, 1, 1),
+                taken_at=_dt.datetime(2020, 1, 1) + _dt.timedelta(days=i * 30),
+            )
+            pid = db.insert_photo(cur, meta)
+            db.assign_faces_to_person(cur, ram,
+                [db.insert_face(cur, pid, (0, 0, 40, 40), _emb(), det_score=0.9)])
+            db.assign_faces_to_person(cur, hari,
+                [db.insert_face(cur, pid, (40, 0, 40, 40), _emb(), det_score=0.9)])
+
+    page = PersonDetailPage()
+    page.show_person(ram, "Ram")
+    assert page._name.text() == "Ram"
+    assert "4 photos" in page._subtitle.text()
+    assert "First seen" in page._subtitle.text()
+    # "Appears with" shows Hari (shares every photo).
+    assert page._aw_container.count() == 1
+
+
 def test_main_window_has_three_pane_shell(qapp, clean_db) -> None:
     from viewer.main_window import MainWindow
 

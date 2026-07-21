@@ -1176,6 +1176,49 @@ def get_photo_detail(cur: PgCursor, photo_id: int) -> Optional[dict[str, Any]]:
     return dict(zip(keys, row))
 
 
+def person_profile_stats(cur: PgCursor, person_id: int) -> dict[str, Any]:
+    """First/last seen dates, photo count and cover crop for a person profile."""
+    cur.execute(
+        """
+        SELECT min(p.taken_at), max(p.taken_at), count(DISTINCT p.id), f2.crop_path
+          FROM faces f
+          JOIN photos p ON p.id = f.photo_id
+          LEFT JOIN persons pr ON pr.id = f.person_id
+          LEFT JOIN faces f2 ON f2.id = pr.cover_face_id
+         WHERE f.person_id = %s
+         GROUP BY f2.crop_path
+        """,
+        (person_id,),
+    )
+    row = cur.fetchone()
+    if row is None:
+        return {"first_seen": None, "last_seen": None, "photo_count": 0, "cover_path": None}
+    return {"first_seen": row[0], "last_seen": row[1],
+            "photo_count": int(row[2]), "cover_path": row[3]}
+
+
+def list_appears_with(cur: PgCursor, person_id: int, limit: int = 8) -> list[dict[str, Any]]:
+    """Other people who share photos with this person, most-shared first."""
+    cur.execute(
+        """
+        SELECT p2.id, p2.display_name, count(DISTINCT f1.photo_id) AS shared, cov.crop_path
+          FROM faces f1
+          JOIN faces f2 ON f2.photo_id = f1.photo_id AND f2.person_id <> f1.person_id
+          JOIN persons p2 ON p2.id = f2.person_id
+          LEFT JOIN faces cov ON cov.id = p2.cover_face_id
+         WHERE f1.person_id = %s AND f2.person_id IS NOT NULL
+         GROUP BY p2.id, p2.display_name, cov.crop_path
+         ORDER BY shared DESC, p2.id
+         LIMIT %s
+        """,
+        (person_id, limit),
+    )
+    return [
+        {"id": int(r[0]), "display_name": r[1], "shared": int(r[2]), "crop_path": r[3]}
+        for r in cur.fetchall()
+    ]
+
+
 def list_photo_people(cur: PgCursor, photo_id: int) -> list[dict[str, Any]]:
     """People who appear in a photo (via its detected faces), with a crop."""
     cur.execute(

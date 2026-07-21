@@ -6,6 +6,7 @@ from :mod:`viewer.data`. Pages never touch the database directly.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -15,9 +16,29 @@ from viewer.actions import ActionRunner
 from viewer.appearance_strip import AppearanceStrip, SuggestionStrip
 from viewer.gallery import PhotoGrid, PhotoGridModel
 from viewer.merge_strip import MergeSuggestionStrip
-from viewer.people_view import PeopleModel, PeopleView
+from viewer.people_view import PeopleModel, PeopleView, _circular, _placeholder
 from viewer.photo_strip import PhotoStrip
 from viewer import theme
+
+
+def _avatar(crop_path: Optional[str], size: int) -> QtGui.QPixmap:
+    """A circular avatar from a face crop, or a neutral placeholder."""
+    if crop_path and Path(crop_path).exists():
+        image = QtGui.QImage(crop_path)
+        if not image.isNull():
+            return _circular(image, size)
+    return _placeholder(size)
+
+
+def _seen_line(profile: dict) -> str:
+    """Human 'N photos · First seen … · Last seen …' summary."""
+    parts = [f"{profile.get('photo_count', 0):,} photos"]
+    first, last = profile.get("first_seen"), profile.get("last_seen")
+    if first is not None:
+        parts.append(f"First seen {first.strftime('%b %Y')}")
+    if last is not None:
+        parts.append(f"Last seen {last.strftime('%b %d, %Y')}")
+    return "   ·   ".join(parts)
 
 
 def _title(text: str) -> QtWidgets.QLabel:
@@ -356,26 +377,54 @@ class PersonDetailPage(QtWidgets.QWidget):
         layout.setContentsMargins(16, 12, 16, 0)
         layout.setSpacing(10)
 
-        header = QtWidgets.QHBoxLayout()
+        # Top row: back + actions.
+        top = QtWidgets.QHBoxLayout()
         back = QtWidgets.QPushButton("←  People")
         back.clicked.connect(self.back_requested.emit)
-        self._name = QtWidgets.QLabel("Person")
-        self._name.setObjectName("H1")
-
         rename_btn = QtWidgets.QPushButton("Rename")
         rename_btn.clicked.connect(self._on_rename)
         merge_btn = QtWidgets.QPushButton("Merge…")
         merge_btn.clicked.connect(self._on_merge)
         delete_btn = QtWidgets.QPushButton("Delete")
         delete_btn.clicked.connect(self._on_delete)
+        top.addWidget(back)
+        top.addStretch(1)
+        top.addWidget(rename_btn)
+        top.addWidget(merge_btn)
+        top.addWidget(delete_btn)
+        layout.addLayout(top)
 
-        header.addWidget(back)
-        header.addSpacing(10)
-        header.addWidget(self._name)
-        header.addStretch(1)
-        header.addWidget(rename_btn)
-        header.addWidget(merge_btn)
-        header.addWidget(delete_btn)
+        # Profile header: avatar + name + seen line + appears-with.
+        header = QtWidgets.QHBoxLayout()
+        header.setSpacing(16)
+        self._avatar = QtWidgets.QLabel()
+        self._avatar.setFixedSize(72, 72)
+        header.addWidget(self._avatar, 0, QtCore.Qt.AlignmentFlag.AlignTop)
+
+        ident = QtWidgets.QVBoxLayout()
+        ident.setSpacing(4)
+        self._name = QtWidgets.QLabel("Person")
+        self._name.setObjectName("H1")
+        self._name.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self._name.setToolTip("Click to rename")
+        self._name.mousePressEvent = lambda _e: self._on_rename()  # click name to rename
+        self._subtitle = QtWidgets.QLabel("")
+        self._subtitle.setObjectName("Muted")
+        ident.addWidget(self._name)
+        ident.addWidget(self._subtitle)
+
+        aw_row = QtWidgets.QHBoxLayout()
+        aw_row.setSpacing(6)
+        self._aw_label = QtWidgets.QLabel("Appears with")
+        self._aw_label.setObjectName("Muted")
+        aw_row.addWidget(self._aw_label)
+        self._aw_container = QtWidgets.QHBoxLayout()
+        self._aw_container.setSpacing(6)
+        aw_row.addLayout(self._aw_container)
+        aw_row.addStretch(1)
+        ident.addLayout(aw_row)
+
+        header.addLayout(ident, 1)
         layout.addLayout(header)
 
         self._model = PhotoGridModel()
@@ -403,6 +452,12 @@ class PersonDetailPage(QtWidgets.QWidget):
         self._person_id = person_id
         self._name.setText(name or "Unknown")
         self._grid.set_person_context(name or "")
+
+        profile = data.person_profile(person_id)
+        self._avatar.setPixmap(_avatar(profile.get("cover_path"), 72))
+        self._subtitle.setText(_seen_line(profile))
+        self._populate_appears_with(person_id)
+
         self._appearances.set_representatives(data.person_representatives(person_id))
         self._suggestions.set_suggestions(
             data.suggestions_for_person(person_id), name or "Unknown"
@@ -412,6 +467,25 @@ class PersonDetailPage(QtWidgets.QWidget):
                 limit=limit, offset=offset, person_id=person_id
             )
         )
+
+    def _populate_appears_with(self, person_id: int) -> None:
+        while self._aw_container.count():
+            w = self._aw_container.takeAt(0).widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
+        companions = data.appears_with(person_id, limit=6)
+        self._aw_label.setVisible(bool(companions))
+        for person in companions:
+            chip = QtWidgets.QToolButton()
+            chip.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+            chip.setAutoRaise(True)
+            chip.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+            chip.setIcon(QtGui.QIcon(_avatar(person.get("crop_path"), 24)))
+            chip.setIconSize(QtCore.QSize(24, 24))
+            chip.setText(" " + (person.get("display_name") or "Unknown"))
+            chip.clicked.connect(lambda _c=False, pid=person["id"]: self.open_person_requested.emit(pid))
+            self._aw_container.addWidget(chip)
 
     def _reload_person(self) -> None:
         if self._person_id is not None:
