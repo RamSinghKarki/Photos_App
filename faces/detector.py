@@ -16,8 +16,9 @@ cosine (`<=>`) index in ``database/schema.sql``.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-from typing import List, Protocol, runtime_checkable
+from typing import List, Optional, Protocol, runtime_checkable
 
 import numpy as np
 
@@ -53,8 +54,15 @@ class FaceDetector(Protocol):
 
 def _clamp_bbox(
     x1: float, y1: float, x2: float, y2: float, width: int, height: int
-) -> tuple[int, int, int, int]:
-    """Clamp a float (x1,y1,x2,y2) box to the image and return (x, y, w, h)."""
+) -> Optional[tuple[int, int, int, int]]:
+    """Clamp a float (x1,y1,x2,y2) box to the image and return (x, y, w, h).
+
+    Returns None for a non-finite box: InsightFace can occasionally emit a NaN
+    coordinate, and ``int(round(nan))`` raises — so a garbage detection is
+    dropped rather than crashing the run.
+    """
+    if not all(math.isfinite(v) for v in (x1, y1, x2, y2)):
+        return None
     ix1 = max(0, min(int(round(x1)), width - 1))
     iy1 = max(0, min(int(round(y1)), height - 1))
     ix2 = max(0, min(int(round(x2)), width))
@@ -119,7 +127,14 @@ class InsightFaceDetector:
                 continue
             x1, y1, x2, y2 = (float(v) for v in face.bbox)
             bbox = _clamp_bbox(x1, y1, x2, y2, width, height)
-            # `.embedding` is the raw vector; store it verbatim.
-            embedding = np.asarray(face.embedding, dtype=np.float32).tolist()
-            results.append(DetectedFace(bbox=bbox, det_score=score, embedding=embedding))
+            if bbox is None:
+                logger.warning("Dropping detection with non-finite bounding box")
+                continue
+            # `.embedding` is the raw vector; store it verbatim — but a NaN
+            # embedding would poison recognition (and pgvector), so drop it.
+            emb = np.asarray(face.embedding, dtype=np.float32)
+            if not np.isfinite(emb).all():
+                logger.warning("Dropping detection with non-finite embedding")
+                continue
+            results.append(DetectedFace(bbox=bbox, det_score=score, embedding=emb.tolist()))
         return results

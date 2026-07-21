@@ -19,6 +19,31 @@ os.environ.setdefault("PHOTOSPHERE_DB_HOST", "127.0.0.1")
 os.environ.setdefault("PHOTOSPHERE_CLUSTER_ALGORITHM", "dbscan")
 
 
+@pytest.fixture(autouse=True)
+def _drain_qt_pool():
+    """Flush background image-decode tasks after each test.
+
+    The widget tests create pages/viewers that kick off async thumbnail decodes
+    on the global ``QThreadPool``. If a widget is dropped while a task is still
+    in flight, the task later emits into a freed C++ object — which, when a
+    later test aggressively processes events, segfaults the whole run. Draining
+    the pool and flushing deferred deletes between tests keeps that leak from
+    crossing test boundaries. A no-op when Qt/QApplication isn't loaded.
+    """
+    yield
+    try:
+        from PySide6 import QtCore
+    except Exception:  # noqa: BLE001 - Qt not installed for this test
+        return
+    app = QtCore.QCoreApplication.instance()
+    if app is None:
+        return
+    QtCore.QThreadPool.globalInstance().waitForDone(3000)
+    app.processEvents()
+    app.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
+    app.processEvents()
+
+
 def _make_exif_image(path: Path) -> None:
     """Write a small JPEG carrying camera, capture-time and GPS EXIF."""
     exif = Image.Exif()

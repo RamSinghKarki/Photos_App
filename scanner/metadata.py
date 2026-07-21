@@ -15,6 +15,7 @@ from __future__ import annotations
 import datetime as _dt
 import hashlib
 import io
+import math
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -80,6 +81,9 @@ def _convert_gps_coordinate(dms: Any, ref: Any) -> Optional[float]:
     if degrees is None or minutes is None or seconds is None:
         return None
     decimal = degrees + minutes / 60.0 + seconds / 3600.0
+    # A zero/zero EXIF rational yields NaN via float(); never store that.
+    if not math.isfinite(decimal):
+        return None
     if isinstance(ref, str) and ref.upper() in ("S", "W"):
         decimal = -decimal
     return decimal

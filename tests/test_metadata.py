@@ -40,6 +40,8 @@ def test_gps_conversion_sign_and_value() -> None:
     # malformed input degrades to None
     assert _convert_gps_coordinate(None, "N") is None
     assert _convert_gps_coordinate((1.0, 2.0), "N") is None
+    # a 0/0 EXIF rational floats to NaN — must degrade to None, never store NaN
+    assert _convert_gps_coordinate((float("nan"), 0.0, 0.0), "N") is None
 
 
 def test_extract_metadata_reads_exif(photo_tree: Path) -> None:

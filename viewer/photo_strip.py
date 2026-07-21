@@ -18,19 +18,19 @@ _H = 118  # strip thumbnail height (px)
 
 
 class _Signals(QtCore.QObject):
-    loaded = QtCore.Signal(int, object)  # index, QImage
+    loaded = QtCore.Signal(int, int, object)  # generation, index, QImage
 
 
 class _Task(QtCore.QRunnable):
-    def __init__(self, index: int, path: str, signals: _Signals) -> None:
+    def __init__(self, generation: int, index: int, path: str, signals: _Signals) -> None:
         super().__init__()
-        self._index, self._path, self._signals = index, path, signals
+        self._generation, self._index, self._path, self._signals = generation, index, path, signals
 
     def run(self) -> None:
         img = QtGui.QImage(self._path)
         if not img.isNull():
             img = img.scaledToHeight(_H, QtCore.Qt.TransformationMode.SmoothTransformation)
-        self._signals.loaded.emit(self._index, img)
+        self._signals.loaded.emit(self._generation, self._index, img)
 
 
 class _Thumb(QtWidgets.QLabel):
@@ -89,7 +89,7 @@ class PhotoStrip(QtWidgets.QScrollArea):
         self.setWidget(self._row)
 
         self._pool = QtCore.QThreadPool.globalInstance()
-        self._signals = _Signals()
+        self._signals = _Signals(self)  # parented: dies with the strip
         self._signals.loaded.connect(self._on_loaded)
         self._thumbs: list[_Thumb] = []
         self._generation = 0
@@ -109,9 +109,10 @@ class PhotoStrip(QtWidgets.QScrollArea):
             self._layout.insertWidget(self._layout.count() - 1, thumb)
             self._thumbs.append(thumb)
             if thumb_path and Path(thumb_path).exists():
-                self._pool.start(_Task(index, thumb_path, self._signals))
+                self._pool.start(_Task(self._generation, index, thumb_path, self._signals))
 
-    @QtCore.Slot(int, object)
-    def _on_loaded(self, index: int, image: QtGui.QImage) -> None:
-        if 0 <= index < len(self._thumbs):
+    @QtCore.Slot(int, int, object)
+    def _on_loaded(self, generation: int, index: int, image: QtGui.QImage) -> None:
+        # Ignore results from a superseded set_photos() (stale thumbs are gone).
+        if generation == self._generation and 0 <= index < len(self._thumbs):
             self._thumbs[index].set_image(image)

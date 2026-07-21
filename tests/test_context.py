@@ -59,6 +59,17 @@ def test_neighbouring_gps_cell_counts_as_same_place() -> None:
     assert context_score(nudged, person) == 1.0
 
 
+def test_nan_gps_is_treated_as_unlocated() -> None:
+    """Regression: NaN GPS (from a 0/0 EXIF rational) must not crash the People
+    stage. round(nan) raises 'cannot convert float NaN to integer'."""
+    nan = float("nan")
+    pc = PhotoContext.build(_DAY, nan, nan)
+    assert pc.cell is None and pc.day == _dt.date(2021, 7, 4)  # day still usable
+    # Building a footprint over a NaN-GPS row must not raise.
+    person = build_person_contexts([(1, _DAY, nan, nan)])[1]
+    assert person.days and not person.cells
+
+
 def test_no_comparable_signal_is_zero() -> None:
     person = PersonContext()  # empty footprint
     photo = PhotoContext.build(_DAY, _LAT, _LON)

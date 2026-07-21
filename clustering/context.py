@@ -20,6 +20,7 @@ indiscriminately.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Iterable, Optional
@@ -34,10 +35,18 @@ _PLACE_WEIGHT = 0.4
 
 
 def _gps_cell(lat: Optional[float], lon: Optional[float]) -> Optional[tuple[int, int]]:
-    """Integer grid cell for a coordinate, or None if unlocated."""
+    """Integer grid cell for a coordinate, or None if unlocated.
+
+    Guards non-finite values: some EXIF GPS tags parse to NaN, and ``round(nan)``
+    raises "cannot convert float NaN to integer" — which previously aborted the
+    whole pipeline in the People stage. Treat NaN/inf as "no location".
+    """
     if lat is None or lon is None:
         return None
-    return (round(float(lat) / _GPS_STEP), round(float(lon) / _GPS_STEP))
+    lat_f, lon_f = float(lat), float(lon)
+    if not (math.isfinite(lat_f) and math.isfinite(lon_f)):
+        return None
+    return (round(lat_f / _GPS_STEP), round(lon_f / _GPS_STEP))
 
 
 def _neighbours(cell: tuple[int, int]) -> Iterable[tuple[int, int]]:
