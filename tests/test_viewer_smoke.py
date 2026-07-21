@@ -190,3 +190,34 @@ def test_photo_viewer_navigation(qapp, clean_db, photo_tree: Path) -> None:
         assert viewer._index == 0
     finally:
         viewer.close()
+
+
+def test_viewer_workspace(qapp, clean_db, photo_tree: Path) -> None:
+    scan_directory(photo_tree)
+    generate_thumbnails()
+
+    from viewer import data
+    from viewer.photo_viewer import PhotoViewer
+
+    ids = [row[0] for row in data.photo_grid(limit=100)]
+    viewer = PhotoViewer(ids, start_index=0)
+    try:
+        # Tabbed inspector: People / Info / Text / Similar.
+        assert viewer._tabs.count() == 4
+        assert [viewer._tabs.tabText(i) for i in range(4)] == ["People", "Info", "Text", "Similar"]
+
+        # Immersive (Space) hides all chrome.
+        viewer.toggle_immersive()
+        assert viewer._tabs.isHidden() and viewer._film.isHidden() and viewer._bar.isHidden()
+        viewer.toggle_immersive()
+        assert not viewer._tabs.isHidden()
+
+        # Filmstrip jump changes the current photo.
+        viewer._jump_to(ids[3])
+        assert viewer._index == 3
+
+        # "Find similar" defers the request and closes.
+        viewer._request_similar()
+        assert viewer.requested_similar == ids[3]
+    finally:
+        viewer.close()

@@ -256,6 +256,11 @@ class MainWindow(QtWidgets.QMainWindow):
         start = photo_ids.index(photo_id) if photo_id in photo_ids else 0
         viewer = PhotoViewer(photo_ids, start, self)
         viewer.exec()
+        # Navigation chosen inside the viewer runs now (not behind the modal).
+        if viewer.requested_person is not None:
+            self._open_person(viewer.requested_person)
+        elif viewer.requested_similar is not None:
+            self._on_find_similar(viewer.requested_similar)
 
     # -- search --------------------------------------------------------------
     def _on_search(self, term: str) -> None:

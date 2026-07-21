@@ -43,6 +43,18 @@ def persons() -> list[dict[str, Any]]:
         return db.list_persons_with_cover(cur)
 
 
+def photo_people(photo_id: int) -> list[dict[str, Any]]:
+    """People appearing in one photo (for the viewer's People tab)."""
+    with timer("query.photo_people"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_photo_people(cur, photo_id)
+
+
+def photos_brief(photo_ids: list[int]) -> list[tuple]:
+    """Thumbnail rows for a set of ids in order (viewer filmstrip)."""
+    with timer("query.photos_brief"), db.connection() as conn, conn.cursor() as cur:
+        return db.list_photos_brief(cur, photo_ids)
+
+
 def similar_photos(photo_id: int, limit: int = 100) -> list[tuple]:
     """Photos visually similar to the given one (CLIP nearest neighbours)."""
     with timer("query.similar"), db.connection() as conn, conn.cursor() as cur:

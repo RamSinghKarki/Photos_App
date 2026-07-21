@@ -1160,7 +1160,7 @@ def get_photo_detail(cur: PgCursor, photo_id: int) -> Optional[dict[str, Any]]:
         """
         SELECT id, file_path, thumbnail_path, file_size, width, height, format,
                taken_at, camera_make, camera_model, orientation,
-               gps_latitude, gps_longitude, is_favorite
+               gps_latitude, gps_longitude, is_favorite, ocr_text
           FROM photos WHERE id = %s
         """,
         (photo_id,),
@@ -1171,9 +1171,38 @@ def get_photo_detail(cur: PgCursor, photo_id: int) -> Optional[dict[str, Any]]:
     keys = (
         "id", "file_path", "thumbnail_path", "file_size", "width", "height",
         "format", "taken_at", "camera_make", "camera_model", "orientation",
-        "gps_latitude", "gps_longitude", "is_favorite",
+        "gps_latitude", "gps_longitude", "is_favorite", "ocr_text",
     )
     return dict(zip(keys, row))
+
+
+def list_photo_people(cur: PgCursor, photo_id: int) -> list[dict[str, Any]]:
+    """People who appear in a photo (via its detected faces), with a crop."""
+    cur.execute(
+        """
+        SELECT DISTINCT p.id, p.display_name, f.crop_path
+          FROM faces f
+          JOIN persons p ON p.id = f.person_id
+         WHERE f.photo_id = %s
+         ORDER BY p.display_name NULLS LAST, p.id
+        """,
+        (photo_id,),
+    )
+    return [{"id": int(r[0]), "display_name": r[1], "crop_path": r[2]} for r in cur.fetchall()]
+
+
+def list_photos_brief(
+    cur: PgCursor, photo_ids: Sequence[int]
+) -> list[tuple[int, str, Optional[str], Any]]:
+    """(id, file_path, thumbnail_path, taken_at) for ids, in the given order."""
+    if not photo_ids:
+        return []
+    cur.execute(
+        "SELECT id, file_path, thumbnail_path, taken_at FROM photos WHERE id = ANY(%s)",
+        (list(photo_ids),),
+    )
+    by_id = {int(r[0]): (int(r[0]), r[1], r[2], r[3]) for r in cur.fetchall()}
+    return [by_id[i] for i in photo_ids if i in by_id]
 
 
 def list_persons_with_cover(cur: PgCursor) -> list[dict[str, Any]]:
